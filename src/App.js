@@ -473,8 +473,27 @@ function VistaLista({ deptos, filtro, setFiltro, onSelect, onNuevo, bloqueado })
   );
 }
 
+// ─── BLOQUE PAYWALL INLINE ────────────────────────────────────────────────────
+function PaywallInline({ onPagar, mensaje }) {
+  return (
+    <div onClick={onPagar} style={{
+      background:"linear-gradient(135deg,rgba(59,130,246,0.1),rgba(99,102,241,0.1))",
+      border:"1px dashed rgba(59,130,246,0.4)",
+      borderRadius:12,padding:"20px 16px",cursor:"pointer",
+      display:"flex",flexDirection:"column",alignItems:"center",gap:8,textAlign:"center",
+    }}>
+      <span style={{fontSize:28}}>🔒</span>
+      <div style={{fontSize:13,fontWeight:700,color:"#f1f5f9"}}>{mensaje}</div>
+      <div style={{fontSize:11,color:"#475569"}}>Disponible en el plan Pro</div>
+      <div style={{marginTop:4,background:"linear-gradient(135deg,#3b82f6,#6366f1)",color:"#fff",fontSize:12,fontWeight:800,padding:"8px 20px",borderRadius:20}}>
+        Activar Pro — $9.990/mes →
+      </div>
+    </div>
+  );
+}
+
 // ─── VISTA DETALLE ────────────────────────────────────────────────────────────
-function VistaDetalle({ d, onBack, onEditar, onEliminar }) {
+function VistaDetalle({ d, onBack, onEditar, onEliminar, acceso, onPagar }) {
   const c = calc(d);
   const [tab, setTab] = useState("resumen");
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
@@ -528,29 +547,65 @@ function VistaDetalle({ d, onBack, onEditar, onEliminar }) {
         </div>
       )}
 
+      {/* KPIs — flujo siempre visible, avanzados solo Pro */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"12px 16px"}}>
-        {[
-          {l:"Flujo /mes",v:fmtM(flujoMes),c:flujoMes>=0?"#22c55e":"#ef4444"},
-          {l:"Flujo anual",v:fmtM(c.flujoNeto),c:c.flujoNeto>=0?"#22c55e":"#ef4444"},
-          {l:"Cash-on-Cash",v:fmt(c.cashOnCash,1)+"%",c:c.cashOnCash>5?"#22c55e":"#f59e0b"},
-          {l:"LTV",v:fmt(c.ltv,0)+"%",c:c.ltv>80?"#ef4444":c.ltv>60?"#f59e0b":"#22c55e"},
-        ].map(k=>(
-          <div key={k.l} style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)"}}>
-            <div style={{fontSize:10,color:"#475569",marginBottom:4}}>{k.l}</div>
-            <div style={{fontSize:22,fontWeight:800,color:k.c}}>{k.v}</div>
+        <div style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{fontSize:10,color:"#475569",marginBottom:4}}>Flujo /mes</div>
+          <div style={{fontSize:22,fontWeight:800,color:flujoMes>=0?"#22c55e":"#ef4444"}}>{fmtM(flujoMes)}</div>
+        </div>
+        <div style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{fontSize:10,color:"#475569",marginBottom:4}}>Flujo anual</div>
+          <div style={{fontSize:22,fontWeight:800,color:c.flujoNeto>=0?"#22c55e":"#ef4444"}}>{fmtM(c.flujoNeto)}</div>
+        </div>
+        {acceso ? <>
+          <div style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{fontSize:10,color:"#475569",marginBottom:4}}>Cash-on-Cash</div>
+            <div style={{fontSize:22,fontWeight:800,color:c.cashOnCash>5?"#22c55e":"#f59e0b"}}>{fmt(c.cashOnCash,1)}%</div>
           </div>
-        ))}
+          <div style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{fontSize:10,color:"#475569",marginBottom:4}}>LTV</div>
+            <div style={{fontSize:22,fontWeight:800,color:c.ltv>80?"#ef4444":c.ltv>60?"#f59e0b":"#22c55e"}}>{fmt(c.ltv,0)}%</div>
+          </div>
+        </> : <>
+          {["Cash-on-Cash","Cap Rate"].map(l=>(
+            <div key={l} onClick={onPagar} style={{background:"rgba(59,130,246,0.05)",borderRadius:12,padding:"12px 14px",border:"1px dashed rgba(59,130,246,0.3)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4}}>
+              <span style={{fontSize:16}}>🔒</span>
+              <div style={{fontSize:10,color:"#3b82f6",fontWeight:700}}>{l}</div>
+              <div style={{fontSize:9,color:"#475569"}}>Solo Pro</div>
+            </div>
+          ))}
+        </>}
       </div>
 
+      {/* Recomendacion */}
+      {!acceso && (
+        <div style={{margin:"0 16px 12px"}}>
+          <PaywallInline onPagar={onPagar} mensaje="Desbloquea la recomendación: ¿mantener, vender o ajustar precio?"/>
+        </div>
+      )}
+      {acceso && (
+        <div style={{margin:"0 16px 12px",background:c.recC+"15",border:`1px solid ${c.recC}44`,borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+          <div style={{fontSize:22}}>🎯</div>
+          <div>
+            <div style={{fontSize:10,color:"#475569",marginBottom:2}}>Recomendación</div>
+            <div style={{fontSize:16,fontWeight:800,color:c.recC}}>{c.rec}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
       <div style={{display:"flex",gap:2,padding:"0 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",overflowX:"auto",scrollbarWidth:"none"}}>
-        {["resumen","gastos","deuda","escenarios"].map(t=>(
-          <button key={t} onClick={()=>setTab(t)} style={{
-            background:tab===t?"rgba(255,255,255,0.08)":"transparent",
-            border:"none",color:tab===t?"#f1f5f9":"#475569",
-            fontSize:12,fontWeight:tab===t?700:400,
-            padding:"8px 14px",borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",
-          }}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>
-        ))}
+        {["resumen","gastos","deuda","escenarios"].map(t=>{
+          const bloqueado = !acceso && ["gastos","deuda","escenarios"].includes(t);
+          return (
+            <button key={t} onClick={()=>bloqueado?onPagar():setTab(t)} style={{
+              background:tab===t?"rgba(255,255,255,0.08)":"transparent",
+              border:"none",color:bloqueado?"#334155":tab===t?"#f1f5f9":"#475569",
+              fontSize:12,fontWeight:tab===t?700:400,
+              padding:"8px 14px",borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",
+            }}>{bloqueado?"🔒 ":""}{t.charAt(0).toUpperCase()+t.slice(1)}</button>
+          );
+        })}
       </div>
 
       <div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
@@ -558,19 +613,28 @@ function VistaDetalle({ d, onBack, onEditar, onEliminar }) {
           <Card>
             <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Ingresos</div>
             <LI l="Arriendo actual" v={"$"+fmt(d.arriendoActual)} bold/>
-            <LI l="Precio de mercado" v={"$"+fmt(d.arriendoMercado)}/>
-            <LI l="Diferencia vs mercado" v={fmtM(c.gapArriendo)} c={c.gapArriendo>=0?"#3b82f6":"#ef4444"}/>
             <LI l="Meses arrendados" v={d.mesesArriendados+"/12"}/>
             <LI l="Meses vacancia" v={d.mesesVacancia+" meses"} c={d.mesesVacancia>2?"#ef4444":"#94a3b8"}/>
+            {acceso ? <>
+              <LI l="Precio de mercado" v={"$"+fmt(d.arriendoMercado)}/>
+              <LI l="Diferencia vs mercado" v={fmtM(c.gapArriendo)} c={c.gapArriendo>=0?"#3b82f6":"#ef4444"}/>
+            </> : <div onClick={onPagar} style={{padding:"8px 0",display:"flex",alignItems:"center",gap:6,cursor:"pointer",borderTop:"1px solid rgba(255,255,255,0.04)"}}>
+              <span style={{fontSize:12}}>🔒</span>
+              <span style={{fontSize:12,color:"#334155"}}>Comparación vs mercado — Pro</span>
+            </div>}
           </Card>
           <Card>
-            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Egresos mensuales</div>
-            {gastos.map(g=><LI key={g.l} l={g.l} v={"$"+fmt(g.m)} dot={g.c}/>)}
-            <div style={{borderTop:"1px solid rgba(255,255,255,0.08)",paddingTop:8,marginTop:4}}>
-              <LI l="Total egresos" v={"$"+fmt(gastosMes)} bold/>
-            </div>
+            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Egresos</div>
+            <LI l="Total egresos /mes" v={"$"+fmt(gastosMes)} bold/>
+            {acceso
+              ? gastos.map(g=><LI key={g.l} l={g.l} v={"$"+fmt(g.m)} dot={g.c}/>)
+              : <div onClick={onPagar} style={{padding:"8px 0",display:"flex",alignItems:"center",gap:6,cursor:"pointer",borderTop:"1px solid rgba(255,255,255,0.04)"}}>
+                  <span style={{fontSize:12}}>🔒</span>
+                  <span style={{fontSize:12,color:"#334155"}}>Desglose detallado de gastos — Pro</span>
+                </div>
+            }
           </Card>
-          <Card>
+          {acceso && <Card>
             <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Patrimonio</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               <KS l="Valor mercado" v={fmtUF(d.valorMercado)}/>
@@ -578,7 +642,8 @@ function VistaDetalle({ d, onBack, onEditar, onEliminar }) {
               <KS l="Equity" v={fmtUF(c.equity)} c="#22c55e"/>
               <KS l="Plusvalía esp." v={d.plusvalia?fmt(d.plusvalia,1)+"%/año":"–"}/>
             </div>
-          </Card>
+          </Card>}
+          {!acceso && <PaywallInline onPagar={onPagar} mensaje="Análisis completo: patrimonio, equity y deuda"/>}
         </>}
 
         {tab==="gastos"&&(
@@ -756,7 +821,7 @@ function Landing({ onEntrar, onPagar }) {
           padding:"16px",borderRadius:14,cursor:"pointer",
           boxShadow:"0 8px 32px rgba(59,130,246,0.4)",marginBottom:12,
         }}>
-          Probar gratis — 2 propiedades
+          Probar gratis — 1 propiedad
         </button>
         <div style={{fontSize:12,color:"#334155"}}>Sin tarjeta. Sin registro. Datos en tu dispositivo.</div>
       </div>
@@ -799,10 +864,10 @@ function Landing({ onEntrar, onPagar }) {
               </div>
               <div style={{fontSize:22,fontWeight:900,color:"#f1f5f9"}}>$0</div>
             </div>
-            {["Hasta 2 propiedades","Todas las métricas","Sin simulador de escenarios"].map(i=>(
+            {["1 propiedad","Flujo mensual y anual básico","Sin métricas avanzadas (Cap Rate, CaC)","Sin recomendación automática","Sin simulador de escenarios"].map(i=>(
               <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-                <span style={{fontSize:12,color:i.startsWith("Sin")?"#475569":"#22c55e"}}>{i.startsWith("Sin")?"✗":"✓"}</span>
-                <span style={{fontSize:12,color:i.startsWith("Sin")?"#475569":"#94a3b8"}}>{i}</span>
+                <span style={{fontSize:12,color:i.startsWith("Sin")||i.startsWith("1 prop")?"#475569":"#22c55e"}}>{i.startsWith("Sin")||i.startsWith("1 prop")?"✗":"✓"}</span>
+                <span style={{fontSize:12,color:i.startsWith("Sin")||i.startsWith("1 prop")?"#475569":"#94a3b8"}}>{i}</span>
               </div>
             ))}
             <button onClick={onEntrar} style={{width:"100%",marginTop:14,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#94a3b8",fontSize:13,fontWeight:700,padding:"12px",borderRadius:10,cursor:"pointer"}}>
@@ -960,7 +1025,7 @@ export default function App() {
 
   const entrarGratis = () => {
     const guardados = cargarDeptos();
-    setDeptos(guardados && guardados.length > 0 ? guardados : DEMO.slice(0,2));
+    setDeptos(guardados && guardados.length > 0 ? guardados : DEMO.slice(0,1));
     setPantalla("app");
   };
 
@@ -970,7 +1035,7 @@ export default function App() {
     setPantalla("app");
   };
 
-  const puedeAgregar = () => acceso || deptos.length < 2;
+  const puedeAgregar = () => acceso || deptos.length < 1;
 
   const guardarNuevo = (d) => {
     setDeptos(prev => { const n=[...prev,d]; guardarDeptos(n); return n; });
@@ -1011,11 +1076,11 @@ export default function App() {
       </div>
 
       {/* banner free limit */}
-      {!acceso&&deptos.length>=2&&vista==="lista"&&navTab==="deptos"&&(
+      {!acceso&&deptos.length>=1&&vista==="lista"&&navTab==="deptos"&&(
         <div onClick={()=>setPantalla("paywall")} style={{margin:"12px 16px 0",background:"linear-gradient(135deg,rgba(59,130,246,0.12),rgba(99,102,241,0.12))",border:"1px solid rgba(59,130,246,0.3)",borderRadius:10,padding:"10px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#3b82f6"}}>Plan Free — 2/2 propiedades</div>
-            <div style={{fontSize:11,color:"#475569",marginTop:1}}>Activa Pro para agregar más →</div>
+            <div style={{fontSize:12,fontWeight:700,color:"#3b82f6"}}>Plan Free — 1/1 propiedades</div>
+            <div style={{fontSize:11,color:"#475569",marginTop:1}}>Activa Pro para agregar más y desbloquear todo →</div>
           </div>
           <span style={{fontSize:18}}>🔒</span>
         </div>
@@ -1029,7 +1094,7 @@ export default function App() {
           bloqueado={!puedeAgregar()}/>
       )}
       {navTab==="deptos"&&vista==="detalle"&&deptoSel&&(
-        <VistaDetalle d={deptoSel} onBack={irALista} onEditar={()=>setVista("editar")} onEliminar={eliminar}/>
+        <VistaDetalle d={deptoSel} onBack={irALista} onEditar={()=>setVista("editar")} onEliminar={eliminar} acceso={acceso} onPagar={()=>setPantalla("paywall")}/>
       )}
       {vista==="nuevo"&&(
         <FormularioDepto titulo="Nueva propiedad" onGuardar={guardarNuevo} onCancelar={irALista}/>
