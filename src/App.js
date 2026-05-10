@@ -921,11 +921,7 @@ function Paywall({ onPagar, onVolver }) {
 
   // Simula flujo de pago — en producción aquí iría el redirect a Mercado Pago
   const simularPago = () => {
-    setProcesando(true);
-    setTimeout(() => {
-      activarAcceso();
-      onPagar();
-    }, 2000);
+    window.open("https://www.mercadopago.cl/subscriptions/checkout?preapproval_plan_id=008ace555efd44858a893539c2a43208", "_blank");
   };
 
   const validarCodigo = () => {
