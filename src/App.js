@@ -1009,18 +1009,12 @@ function Paywall({ onPagar, onVolver }) {
   const [error, setError] = useState("");
   const [procesando, setProcesando] = useState(false);
 
-  // Simula flujo de pago — en producción aquí iría el redirect a Mercado Pago
   const simularPago = () => {
-    setProcesando(true);
-    setTimeout(() => {
-      activarAcceso();
-      onPagar();
-    }, 2000);
+    window.open("https://www.mercadopago.cl/subscriptions/checkout?preapproval_plan_id=008ace555efd44858a893539c2a43208", "_blank");
   };
 
   const validarCodigo = () => {
     if (codigo.trim().toUpperCase() === "PROPRO2025") {
-      activarAcceso();
       onPagar();
     } else {
       setError("Código inválido");
