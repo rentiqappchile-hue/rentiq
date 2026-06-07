@@ -11,34 +11,6 @@ import {
 } from "firebase/firestore";
 
 
-async function cargarDeptosDB(uid) {
-  try {
-    const snap = await getDocs(collection(db, "usuarios", uid, "deptos"));
-    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
-  } catch { return []; }
-}
-async function guardarDeptooDB(uid, depto) {
-  try {
-    await setDoc(doc(db, "usuarios", uid, "deptos", String(depto.id)), depto);
-  } catch {}
-}
-async function eliminarDeptooDB(uid, id) {
-  try {
-    await deleteDoc(doc(db, "usuarios", uid, "deptos", String(id)));
-  } catch {}
-}
-async function getProDB(uid) {
-  try {
-    const snap = await getDoc(doc(db, "usuarios", uid));
-    return snap.exists() ? snap.data().pro === true : false;
-  } catch { return false; }
-}
-async function setProDB(uid, value) {
-  try {
-    await setDoc(doc(db, "usuarios", uid), { pro: value }, { merge: true });
-  } catch {}
-}
-
 // ─── FIRESTORE HELPERS ────────────────────────────────────────────────────────
 async function cargarDeptosDB(uid) {
   try {
