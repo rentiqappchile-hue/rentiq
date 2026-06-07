@@ -1,22 +1,42 @@
 import { useState, useMemo, useEffect } from "react";
+import { auth, db } from "./firebase";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import {
+  collection, doc, getDocs, setDoc, deleteDoc, getDoc,
+} from "firebase/firestore";
 
-const STORAGE_KEY = "rentiq_deptos";
-const ACCESS_KEY  = "rentiq_access";
 
-function cargarDeptos() {
+async function cargarDeptosDB(uid) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+    const snap = await getDocs(collection(db, "usuarios", uid, "deptos"));
+    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  } catch { return []; }
 }
-function guardarDeptos(deptos) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(deptos)); } catch {}
+async function guardarDeptooDB(uid, depto) {
+  try {
+    await setDoc(doc(db, "usuarios", uid, "deptos", String(depto.id)), depto);
+  } catch {}
 }
-function tieneAcceso() {
-  try { return localStorage.getItem(ACCESS_KEY) === "pro"; } catch { return false; }
+async function eliminarDeptooDB(uid, id) {
+  try {
+    await deleteDoc(doc(db, "usuarios", uid, "deptos", String(id)));
+  } catch {}
 }
-function activarAcceso() {
-  try { localStorage.setItem(ACCESS_KEY, "pro"); } catch {}
+async function getProDB(uid) {
+  try {
+    const snap = await getDoc(doc(db, "usuarios", uid));
+    return snap.exists() ? snap.data().pro === true : false;
+  } catch { return false; }
+}
+async function setProDB(uid, value) {
+  try {
+    await setDoc(doc(db, "usuarios", uid), { pro: value }, { merge: true });
+  } catch {}
 }
 
 // ─── DATOS DEMO ───────────────────────────────────────────────────────────────
@@ -921,7 +941,11 @@ function Paywall({ onPagar, onVolver }) {
 
   // Simula flujo de pago — en producción aquí iría el redirect a Mercado Pago
   const simularPago = () => {
-    window.open("https://www.mercadopago.cl/subscriptions/checkout?preapproval_plan_id=008ace555efd44858a893539c2a43208", "_blank");
+    setProcesando(true);
+    setTimeout(() => {
+      activarAcceso();
+      onPagar();
+    }, 2000);
   };
 
   const validarCodigo = () => {
@@ -988,71 +1012,90 @@ function Paywall({ onPagar, onVolver }) {
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
-export default function App() {
-  const [pantalla, setPantalla] = useState("landing"); // landing | paywall | app
+
+  const [pantalla, setPantalla] = useState("cargando"); // cargando | landing | auth | paywall | app
   const [acceso, setAcceso] = useState(false);
+  const [usuario, setUsuario] = useState(null);
   const [deptos, setDeptos] = useState([]);
   const [vista, setVista] = useState("lista");
   const [deptoSel, setDeptoSel] = useState(null);
   const [filtro, setFiltro] = useState("todos");
   const [navTab, setNavTab] = useState("deptos");
+  const [cargando, setCargando] = useState(true);
 
-  // Al montar: verificar acceso y cargar datos
+  // Escuchar cambios de autenticación
   useEffect(() => {
-    const acc = tieneAcceso();
-    setAcceso(acc);
-    const guardados = cargarDeptos();
-    if (guardados && guardados.length > 0) {
-      setDeptos(guardados);
-      setPantalla("app");
-    } else if (acc) {
-      setDeptos(DEMO);
-      setPantalla("app");
-    }
-    // Si no hay datos ni acceso → landing
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUsuario(user);
+        const pro = await getProDB(user.uid);
+        setAcceso(pro);
+        const deps = await cargarDeptosDB(user.uid);
+        setDeptos(deps.length > 0 ? deps : pro ? DEMO : DEMO.slice(0,1));
+        setPantalla("app");
+      } else {
+        setUsuario(null);
+        setAcceso(false);
+        setDeptos([]);
+        setPantalla("landing");
+      }
+      setCargando(false);
+    });
+    return () => unsub();
   }, []);
-
-  // Persistir cada vez que cambian los deptos
-  useEffect(() => {
-    if (deptos.length > 0) guardarDeptos(deptos);
-  }, [deptos]);
 
   const irALista = () => { setVista("lista"); setDeptoSel(null); };
 
-  const entrarGratis = () => {
-    const guardados = cargarDeptos();
-    setDeptos(guardados && guardados.length > 0 ? guardados : DEMO.slice(0,1));
+  const entrarGratis = () => setPantalla("auth");
+
+  const activarPro = async () => {
+    if (usuario) {
+      await setProDB(usuario.uid, true);
+      setAcceso(true);
+    }
     setPantalla("app");
   };
 
-  const activarPro = () => {
-    setAcceso(true);
-    if (deptos.length === 0) setDeptos(DEMO);
-    setPantalla("app");
+  const cerrarSesion = async () => {
+    await signOut(auth);
+    setPantalla("landing");
   };
 
   const puedeAgregar = () => acceso || deptos.length < 1;
 
-  const guardarNuevo = (d) => {
-    setDeptos(prev => { const n=[...prev,d]; guardarDeptos(n); return n; });
-    irALista();
-  };
-  const guardarEdicion = (d) => {
-    setDeptos(prev => { const n=prev.map(p=>p.id===d.id?d:p); guardarDeptos(n); return n; });
-    setDeptoSel(d); setVista("detalle");
-  };
-  const eliminar = () => {
-    setDeptos(prev => { const n=prev.filter(p=>p.id!==deptoSel.id); guardarDeptos(n); return n; });
+  const guardarNuevo = async (d) => {
+    const nuevo = [...deptos, d];
+    setDeptos(nuevo);
+    if (usuario) await guardarDeptooDB(usuario.uid, d);
     irALista();
   };
 
-  // ── PANTALLAS ──
+  const guardarEdicion = async (d) => {
+    const actualizado = deptos.map(p => p.id === d.id ? d : p);
+    setDeptos(actualizado);
+    if (usuario) await guardarDeptooDB(usuario.uid, d);
+    setDeptoSel(d); setVista("detalle");
+  };
+
+  const eliminar = async () => {
+    if (usuario) await eliminarDeptooDB(usuario.uid, deptoSel.id);
+    setDeptos(prev => prev.filter(p => p.id !== deptoSel.id));
+    irALista();
+  };
+
+  if (cargando) return (
+    <div style={{minHeight:"100vh",background:"#080f1a",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <div style={{width:40,height:40,borderRadius:12,background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>🏢</div>
+      <div style={{fontSize:14,color:"#475569"}}>Cargando Rentiq...</div>
+    </div>
+  );
+
   if (pantalla === "landing") return <Landing onEntrar={entrarGratis} onPagar={()=>setPantalla("paywall")}/>;
-  if (pantalla === "paywall") return <Paywall onPagar={activarPro} onVolver={()=>setPantalla("landing")}/>;
+  if (pantalla === "auth") return <AuthScreen onLogin={()=>setPantalla("app")} onVolver={()=>setPantalla("landing")}/>;
+  if (pantalla === "paywall") return <Paywall onPagar={activarPro} onVolver={()=>setPantalla(usuario?"app":"landing")}/>;
 
   return (
     <div style={{minHeight:"100vh",maxWidth:"100vw",overflowX:"hidden",background:"#080f1a",color:"#f1f5f9",fontFamily:"'DM Sans','SF Pro Display',system-ui,sans-serif"}}>
-      {/* top nav */}
       <div style={{position:"sticky",top:0,zIndex:100,background:"rgba(8,15,26,0.97)",backdropFilter:"blur(20px)",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",height:52}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <div style={{width:26,height:26,borderRadius:7,background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>🏢</div>
@@ -1061,17 +1104,17 @@ export default function App() {
             {acceso?"PRO":"FREE"}
           </span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
           <div style={{fontSize:11,color:"#475569"}}>{deptos.length} prop.</div>
           {!acceso&&(
-            <button onClick={()=>setPantalla("paywall")} style={{background:"linear-gradient(135deg,#3b82f6,#6366f1)",border:"none",color:"#fff",fontSize:11,fontWeight:800,padding:"5px 10px",borderRadius:8,cursor:"pointer"}}>
-              ↑ Pro
-            </button>
+            <button onClick={()=>setPantalla("paywall")} style={{background:"linear-gradient(135deg,#3b82f6,#6366f1)",border:"none",color:"#fff",fontSize:11,fontWeight:800,padding:"5px 10px",borderRadius:8,cursor:"pointer"}}>↑ Pro</button>
+          )}
+          {usuario&&(
+            <button onClick={cerrarSesion} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"#475569",fontSize:11,padding:"5px 10px",borderRadius:8,cursor:"pointer"}}>Salir</button>
           )}
         </div>
       </div>
 
-      {/* banner free limit */}
       {!acceso&&deptos.length>=1&&vista==="lista"&&navTab==="deptos"&&(
         <div onClick={()=>setPantalla("paywall")} style={{margin:"12px 16px 0",background:"linear-gradient(135deg,rgba(59,130,246,0.12),rgba(99,102,241,0.12))",border:"1px solid rgba(59,130,246,0.3)",borderRadius:10,padding:"10px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
@@ -1082,7 +1125,6 @@ export default function App() {
         </div>
       )}
 
-      {/* content */}
       {navTab==="deptos"&&vista==="lista"&&(
         <VistaLista deptos={deptos} filtro={filtro} setFiltro={setFiltro}
           onSelect={d=>{setDeptoSel(d);setVista("detalle");}}
