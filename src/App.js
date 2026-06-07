@@ -39,6 +39,104 @@ async function setProDB(uid, value) {
   } catch {}
 }
 
+// ─── FIRESTORE HELPERS ────────────────────────────────────────────────────────
+async function cargarDeptosDB(uid) {
+  try {
+    const snap = await getDocs(collection(db, "usuarios", uid, "deptos"));
+    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  } catch { return []; }
+}
+async function guardarDeptooDB(uid, depto) {
+  try {
+    await setDoc(doc(db, "usuarios", uid, "deptos", String(depto.id)), depto);
+  } catch {}
+}
+async function eliminarDeptooDB(uid, id) {
+  try {
+    await deleteDoc(doc(db, "usuarios", uid, "deptos", String(id)));
+  } catch {}
+}
+async function getProDB(uid) {
+  try {
+    const snap = await getDoc(doc(db, "usuarios", uid));
+    return snap.exists() ? snap.data().pro === true : false;
+  } catch { return false; }
+}
+async function setProDB(uid, value) {
+  try {
+    await setDoc(doc(db, "usuarios", uid), { pro: value }, { merge: true });
+  } catch {}
+}
+
+// ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
+function AuthScreen({ onLogin, onVolver }) {
+  const [modo, setModo] = useState("login");
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+
+  const handleSubmit = async () => {
+    setError(""); setCargando(true);
+    try {
+      if (modo === "registro") {
+        await createUserWithEmailAndPassword(auth, email, pass);
+      } else {
+        await signInWithEmailAndPassword(auth, email, pass);
+      }
+      onLogin();
+    } catch (e) {
+      if (e.code === "auth/email-already-in-use") setError("Este email ya está registrado.");
+      else if (e.code === "auth/wrong-password" || e.code === "auth/invalid-credential") setError("Email o contraseña incorrectos.");
+      else if (e.code === "auth/weak-password") setError("La contraseña debe tener al menos 6 caracteres.");
+      else if (e.code === "auth/invalid-email") setError("Email inválido.");
+      else setError("Error al ingresar. Intenta de nuevo.");
+    }
+    setCargando(false);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"#080f1a",color:"#f1f5f9",fontFamily:"'DM Sans',system-ui,sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{width:"100%",maxWidth:360}}>
+        <button onClick={onVolver} style={{background:"none",border:"none",color:"#3b82f6",fontSize:13,cursor:"pointer",padding:0,marginBottom:24}}>← Volver</button>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{width:48,height:48,borderRadius:14,background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,margin:"0 auto 16px"}}>🏢</div>
+          <h2 style={{margin:"0 0 8px",fontSize:22,fontWeight:900}}>{modo==="login"?"Bienvenido de vuelta":"Crear cuenta gratis"}</h2>
+          <p style={{margin:0,fontSize:13,color:"#64748b"}}>{modo==="login"?"Ingresa para ver tus propiedades":"Empieza a analizar tu primer depto"}</p>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label style={{fontSize:12,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:5}}>Email</label>
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com"
+            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#f1f5f9",fontSize:14,padding:"12px 14px",outline:"none",boxSizing:"border-box"}}/>
+        </div>
+        <div style={{marginBottom:20}}>
+          <label style={{fontSize:12,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:5}}>Contraseña</label>
+          <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Mínimo 6 caracteres"
+            onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#f1f5f9",fontSize:14,padding:"12px 14px",outline:"none",boxSizing:"border-box"}}/>
+        </div>
+        {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#ef4444",marginBottom:16}}>{error}</div>}
+        <button onClick={handleSubmit} disabled={cargando} style={{
+          width:"100%",background:"linear-gradient(135deg,#3b82f6,#6366f1)",
+          border:"none",color:"#fff",fontSize:15,fontWeight:800,
+          padding:"14px",borderRadius:12,cursor:cargando?"not-allowed":"pointer",
+          opacity:cargando?0.7:1,marginBottom:16,
+        }}>
+          {cargando?"Cargando...":(modo==="login"?"Ingresar":"Crear cuenta")}
+        </button>
+        <div style={{textAlign:"center",fontSize:13,color:"#475569"}}>
+          {modo==="login"?"¿No tienes cuenta?":"¿Ya tienes cuenta?"}{" "}
+          <span onClick={()=>{setModo(modo==="login"?"registro":"login");setError("");}}
+            style={{color:"#3b82f6",cursor:"pointer",fontWeight:700}}>
+            {modo==="login"?"Regístrate gratis":"Inicia sesión"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── DATOS DEMO ───────────────────────────────────────────────────────────────
 const DEMO = [
   {
@@ -1012,7 +1110,7 @@ function Paywall({ onPagar, onVolver }) {
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
-
+export default function App() {
   const [pantalla, setPantalla] = useState("cargando"); // cargando | landing | auth | paywall | app
   const [acceso, setAcceso] = useState(false);
   const [usuario, setUsuario] = useState(null);
