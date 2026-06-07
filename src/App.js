@@ -1007,7 +1007,7 @@ function Landing({ onEntrar, onPagar }) {
 function Paywall({ onPagar, onVolver }) {
   const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
-  const [procesando, setProcesando] = useState(false);
+  const [procesando] = useState(false);
 
   const simularPago = () => {
     window.open("https://www.mercadopago.cl/subscriptions/checkout?preapproval_plan_id=008ace555efd44858a893539c2a43208", "_blank");
