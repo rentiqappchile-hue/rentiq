@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { auth, db } from "./firebase";
+import { auth, db, functions } from "./firebase";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -7,8 +7,11 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import {
-  collection, doc, getDocs, setDoc, deleteDoc, getDoc,
+  collection, doc, getDocs, setDoc, deleteDoc, onSnapshot,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+
+const MP_CHECKOUT_URL = "https://www.mercadopago.cl/subscriptions/checkout?preapproval_plan_id=008ace555efd44858a893539c2a43208";
 
 
 // ─── FIRESTORE HELPERS ────────────────────────────────────────────────────────
@@ -21,24 +24,25 @@ async function cargarDeptosDB(uid) {
 async function guardarDeptooDB(uid, depto) {
   try {
     await setDoc(doc(db, "usuarios", uid, "deptos", String(depto.id)), depto);
-  } catch {}
+    return true;
+  } catch (e) {
+    console.error("Error guardando propiedad:", e);
+    return false;
+  }
 }
 async function eliminarDeptooDB(uid, id) {
   try {
     await deleteDoc(doc(db, "usuarios", uid, "deptos", String(id)));
-  } catch {}
+    return true;
+  } catch (e) {
+    console.error("Error eliminando propiedad:", e);
+    return false;
+  }
 }
-async function getProDB(uid) {
-  try {
-    const snap = await getDoc(doc(db, "usuarios", uid));
-    return snap.exists() ? snap.data().pro === true : false;
-  } catch { return false; }
-}
-async function setProDB(uid, value) {
-  try {
-    await setDoc(doc(db, "usuarios", uid), { pro: value }, { merge: true });
-  } catch {}
-}
+// El estado Pro se LEE en tiempo real con onSnapshot (ver App) y se ESCRIBE
+// únicamente desde las Cloud Functions (webhook de Mercado Pago / canje de
+// código). Las reglas de Firestore bloquean cualquier escritura del cliente
+// sobre usuarios/{uid}.
 
 // ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
 function AuthScreen({ onLogin, onVolver }) {
@@ -1004,20 +1008,34 @@ function Landing({ onEntrar, onPagar }) {
 }
 
 // ─── PAYWALL ──────────────────────────────────────────────────────────────────
-function Paywall({ onPagar, onVolver }) {
+function Paywall({ usuario, onVolver }) {
   const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
-  const [procesando] = useState(false);
+  const [procesando, setProcesando] = useState(false);
+  const [esperandoPago, setEsperandoPago] = useState(false);
 
-  const simularPago = () => {
-    window.open("https://www.mercadopago.cl/subscriptions/checkout?preapproval_plan_id=008ace555efd44858a893539c2a43208", "_blank");
+  const pagarConMP = () => {
+    // external_reference vincula la suscripción con este usuario; el webhook
+    // (Cloud Function) confirma el pago contra la API de MP y activa Pro.
+    window.open(`${MP_CHECKOUT_URL}&external_reference=${encodeURIComponent(usuario.uid)}`, "_blank");
+    setEsperandoPago(true);
   };
 
-  const validarCodigo = () => {
-    if (codigo.trim().toUpperCase() === "PROPRO2025") {
-      onPagar();
-    } else {
-      setError("Código inválido");
+  const validarCodigo = async () => {
+    const limpio = codigo.trim().toUpperCase();
+    if (!limpio || procesando) return;
+    setError(""); setProcesando(true);
+    try {
+      await httpsCallable(functions, "canjearCodigo")({ codigo: limpio });
+      // El onSnapshot del documento del usuario detecta pro=true y la app
+      // sale del paywall automáticamente.
+    } catch (e) {
+      if (e.code === "functions/not-found" || e.code === "functions/invalid-argument") {
+        setError("Código inválido o agotado.");
+      } else {
+        setError("No se pudo validar el código. Intenta de nuevo.");
+      }
+      setProcesando(false);
     }
   };
 
@@ -1033,32 +1051,36 @@ function Paywall({ onPagar, onVolver }) {
         </div>
 
         {/* botón pago real */}
-        <button onClick={simularPago} disabled={procesando} style={{
+        <button onClick={pagarConMP} style={{
           width:"100%",
-          background:procesando?"rgba(59,130,246,0.4)":"linear-gradient(135deg,#3b82f6,#6366f1)",
+          background:"linear-gradient(135deg,#3b82f6,#6366f1)",
           border:"none",color:"#fff",fontSize:15,fontWeight:800,
-          padding:"16px",borderRadius:14,cursor:procesando?"not-allowed":"pointer",
+          padding:"16px",borderRadius:14,cursor:"pointer",
           boxShadow:"0 8px 32px rgba(59,130,246,0.4)",marginBottom:20,
           display:"flex",alignItems:"center",justifyContent:"center",gap:8,
         }}>
-          {procesando ? <>
-            <span style={{width:16,height:16,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.8s linear infinite"}}/>
-            Procesando...
-          </> : "💳 Pagar con Mercado Pago"}
+          💳 Pagar con Mercado Pago
         </button>
+
+        {esperandoPago&&(
+          <div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.25)",borderRadius:10,padding:"12px 14px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{width:16,height:16,border:"2px solid rgba(34,197,94,0.3)",borderTopColor:"#22c55e",borderRadius:"50%",display:"inline-block",flexShrink:0,animation:"spin 0.8s linear infinite"}}/>
+            <span style={{fontSize:12,color:"#22c55e"}}>Cuando completes el pago, tu cuenta Pro se activará aquí automáticamente. Puede tardar unos segundos.</span>
+          </div>
+        )}
 
         <div style={{textAlign:"center",marginBottom:20}}>
           <div style={{fontSize:11,color:"#334155",marginBottom:16}}>— o ingresa un código de acceso —</div>
           <div style={{display:"flex",gap:8}}>
             <input value={codigo} onChange={e=>{setCodigo(e.target.value);setError("");}}
               placeholder="CÓDIGO DE ACCESO"
+              onKeyDown={e=>e.key==="Enter"&&validarCodigo()}
               style={{flex:1,background:"rgba(255,255,255,0.06)",border:error?"1px solid #ef4444":"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#f1f5f9",fontSize:13,fontWeight:700,padding:"11px 14px",outline:"none",letterSpacing:1,textTransform:"uppercase"}}/>
-            <button onClick={validarCodigo} style={{background:"rgba(59,130,246,0.2)",border:"1px solid rgba(59,130,246,0.4)",color:"#3b82f6",fontSize:13,fontWeight:700,padding:"11px 16px",borderRadius:10,cursor:"pointer"}}>
-              OK
+            <button onClick={validarCodigo} disabled={procesando} style={{background:"rgba(59,130,246,0.2)",border:"1px solid rgba(59,130,246,0.4)",color:"#3b82f6",fontSize:13,fontWeight:700,padding:"11px 16px",borderRadius:10,cursor:procesando?"not-allowed":"pointer",opacity:procesando?0.6:1}}>
+              {procesando?"...":"OK"}
             </button>
           </div>
           {error&&<div style={{fontSize:11,color:"#ef4444",marginTop:6}}>{error}</div>}
-          <div style={{fontSize:10,color:"#1e293b",marginTop:8}}>Código demo: PROPRO2025</div>
         </div>
 
         <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(255,255,255,0.06)"}}>
@@ -1087,15 +1109,21 @@ export default function App() {
   const [navTab, setNavTab] = useState("deptos");
   const [cargando, setCargando] = useState(true);
 
-  // Escuchar cambios de autenticación
+  // Escuchar cambios de autenticación + estado Pro en tiempo real.
+  // `pro` lo escriben solo las Cloud Functions; aquí únicamente se lee,
+  // así que cuando el webhook de MP confirma el pago, la app se entera sola.
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    let unsubDoc = null;
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (unsubDoc) { unsubDoc(); unsubDoc = null; }
       if (user) {
         setUsuario(user);
-        const pro = await getProDB(user.uid);
-        setAcceso(pro);
+        unsubDoc = onSnapshot(doc(db, "usuarios", user.uid),
+          snap => setAcceso(snap.exists() && snap.data().pro === true),
+          e => { console.error("Error leyendo estado Pro:", e); setAcceso(false); }
+        );
         const deps = await cargarDeptosDB(user.uid);
-        setDeptos(deps.length > 0 ? deps : pro ? DEMO : DEMO.slice(0,1));
+        setDeptos(deps.length > 0 ? deps : DEMO.slice(0,1));
         setPantalla("app");
       } else {
         setUsuario(null);
@@ -1105,20 +1133,21 @@ export default function App() {
       }
       setCargando(false);
     });
-    return () => unsub();
+    return () => { if (unsubDoc) unsubDoc(); unsubAuth(); };
   }, []);
+
+  // Si Pro se activa (pago confirmado o código canjeado) mientras el usuario
+  // está en el paywall, llevarlo directo a la app.
+  useEffect(() => {
+    if (acceso) setPantalla(p => p === "paywall" ? "app" : p);
+  }, [acceso]);
 
   const irALista = () => { setVista("lista"); setDeptoSel(null); };
 
   const entrarGratis = () => setPantalla("auth");
 
-  const activarPro = async () => {
-    if (usuario) {
-      await setProDB(usuario.uid, true);
-      setAcceso(true);
-    }
-    setPantalla("app");
-  };
+  // El paywall necesita una cuenta para asociar la suscripción.
+  const irAPaywall = () => setPantalla(usuario ? "paywall" : "auth");
 
   const cerrarSesion = async () => {
     await signOut(auth);
@@ -1130,19 +1159,26 @@ export default function App() {
   const guardarNuevo = async (d) => {
     const nuevo = [...deptos, d];
     setDeptos(nuevo);
-    if (usuario) await guardarDeptooDB(usuario.uid, d);
+    if (usuario && !(await guardarDeptooDB(usuario.uid, d))) {
+      alert("No se pudo guardar la propiedad en la nube. Revisa tu conexión e intenta de nuevo.");
+    }
     irALista();
   };
 
   const guardarEdicion = async (d) => {
     const actualizado = deptos.map(p => p.id === d.id ? d : p);
     setDeptos(actualizado);
-    if (usuario) await guardarDeptooDB(usuario.uid, d);
+    if (usuario && !(await guardarDeptooDB(usuario.uid, d))) {
+      alert("No se pudieron guardar los cambios en la nube. Revisa tu conexión e intenta de nuevo.");
+    }
     setDeptoSel(d); setVista("detalle");
   };
 
   const eliminar = async () => {
-    if (usuario) await eliminarDeptooDB(usuario.uid, deptoSel.id);
+    if (usuario && !(await eliminarDeptooDB(usuario.uid, deptoSel.id))) {
+      alert("No se pudo eliminar la propiedad. Revisa tu conexión e intenta de nuevo.");
+      return;
+    }
     setDeptos(prev => prev.filter(p => p.id !== deptoSel.id));
     irALista();
   };
@@ -1154,9 +1190,12 @@ export default function App() {
     </div>
   );
 
-  if (pantalla === "landing") return <Landing onEntrar={entrarGratis} onPagar={()=>setPantalla("paywall")}/>;
+  if (pantalla === "landing") return <Landing onEntrar={entrarGratis} onPagar={irAPaywall}/>;
   if (pantalla === "auth") return <AuthScreen onLogin={()=>setPantalla("app")} onVolver={()=>setPantalla("landing")}/>;
-  if (pantalla === "paywall") return <Paywall onPagar={activarPro} onVolver={()=>setPantalla(usuario?"app":"landing")}/>;
+  if (pantalla === "paywall") {
+    if (!usuario) return <AuthScreen onLogin={()=>setPantalla("paywall")} onVolver={()=>setPantalla("landing")}/>;
+    return <Paywall usuario={usuario} onVolver={()=>setPantalla("app")}/>;
+  }
 
   return (
     <div style={{minHeight:"100vh",maxWidth:"100vw",overflowX:"hidden",background:"#080f1a",color:"#f1f5f9",fontFamily:"'DM Sans','SF Pro Display',system-ui,sans-serif"}}>
@@ -1171,7 +1210,7 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <div style={{fontSize:11,color:"#475569"}}>{deptos.length} prop.</div>
           {!acceso&&(
-            <button onClick={()=>setPantalla("paywall")} style={{background:"linear-gradient(135deg,#3b82f6,#6366f1)",border:"none",color:"#fff",fontSize:11,fontWeight:800,padding:"5px 10px",borderRadius:8,cursor:"pointer"}}>↑ Pro</button>
+            <button onClick={irAPaywall} style={{background:"linear-gradient(135deg,#3b82f6,#6366f1)",border:"none",color:"#fff",fontSize:11,fontWeight:800,padding:"5px 10px",borderRadius:8,cursor:"pointer"}}>↑ Pro</button>
           )}
           {usuario&&(
             <button onClick={cerrarSesion} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"#475569",fontSize:11,padding:"5px 10px",borderRadius:8,cursor:"pointer"}}>Salir</button>
@@ -1180,7 +1219,7 @@ export default function App() {
       </div>
 
       {!acceso&&deptos.length>=1&&vista==="lista"&&navTab==="deptos"&&(
-        <div onClick={()=>setPantalla("paywall")} style={{margin:"12px 16px 0",background:"linear-gradient(135deg,rgba(59,130,246,0.12),rgba(99,102,241,0.12))",border:"1px solid rgba(59,130,246,0.3)",borderRadius:10,padding:"10px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div onClick={irAPaywall} style={{margin:"12px 16px 0",background:"linear-gradient(135deg,rgba(59,130,246,0.12),rgba(99,102,241,0.12))",border:"1px solid rgba(59,130,246,0.3)",borderRadius:10,padding:"10px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:12,fontWeight:700,color:"#3b82f6"}}>Plan Free — 1/1 propiedades</div>
             <div style={{fontSize:11,color:"#475569",marginTop:1}}>Activa Pro para agregar más y desbloquear todo →</div>
@@ -1192,11 +1231,11 @@ export default function App() {
       {navTab==="deptos"&&vista==="lista"&&(
         <VistaLista deptos={deptos} filtro={filtro} setFiltro={setFiltro}
           onSelect={d=>{setDeptoSel(d);setVista("detalle");}}
-          onNuevo={puedeAgregar()?()=>setVista("nuevo"):()=>setPantalla("paywall")}
+          onNuevo={puedeAgregar()?()=>setVista("nuevo"):irAPaywall}
           bloqueado={!puedeAgregar()}/>
       )}
       {navTab==="deptos"&&vista==="detalle"&&deptoSel&&(
-        <VistaDetalle d={deptoSel} onBack={irALista} onEditar={()=>setVista("editar")} onEliminar={eliminar} acceso={acceso} onPagar={()=>setPantalla("paywall")}/>
+        <VistaDetalle d={deptoSel} onBack={irALista} onEditar={()=>setVista("editar")} onEliminar={eliminar} acceso={acceso} onPagar={irAPaywall}/>
       )}
       {vista==="nuevo"&&(
         <FormularioDepto titulo="Nueva propiedad" onGuardar={guardarNuevo} onCancelar={irALista}/>
