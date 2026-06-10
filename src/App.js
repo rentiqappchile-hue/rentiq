@@ -113,38 +113,6 @@ function AuthScreen({ onLogin, onVolver }) {
 }
 
 
-// ─── DATOS DEMO ───────────────────────────────────────────────────────────────
-const DEMO = [
-  {
-    id: 1, nombre: "Depto 301 – Providencia", tipo: "2D/1B", m2: 52, comuna: "Providencia",
-    valorMercado: 98_000_000, deudaHipotecaria: 62_000_000, fechaDeuda: "2024-10-01",
-    dividendoMensual: 420_000, contribuciones: 85_000, gastosComunes: 55_000, seguros: 18_000, otrosGastos: 12_000,
-    arriendoActual: 650_000, arriendoMercado: 680_000, mesesVacancia: 1, mesesArriendados: 11, plusvalia: 4.2,
-    historial: [520000,540000,560000,580000,600000,620000,630000,640000,650000,650000,650000,650000],
-  },
-  {
-    id: 2, nombre: "Depto 12B – Las Condes", tipo: "1D/1B", m2: 38, comuna: "Las Condes",
-    valorMercado: 75_000_000, deudaHipotecaria: 0, fechaDeuda: null,
-    dividendoMensual: 0, contribuciones: 62_000, gastosComunes: 42_000, seguros: 14_000, otrosGastos: 8_000,
-    arriendoActual: 0, arriendoMercado: 520_000, mesesVacancia: 3, mesesArriendados: 9, plusvalia: 5.1,
-    historial: [480000,490000,500000,510000,0,0,0,520000,520000,520000,0,0],
-  },
-  {
-    id: 3, nombre: "Depto 504 – Ñuñoa", tipo: "3D/2B", m2: 78, comuna: "Ñuñoa",
-    valorMercado: 132_000_000, deudaHipotecaria: 95_000_000, fechaDeuda: "2024-03-01",
-    dividendoMensual: 610_000, contribuciones: 110_000, gastosComunes: 78_000, seguros: 24_000, otrosGastos: 15_000,
-    arriendoActual: 900_000, arriendoMercado: 850_000, mesesVacancia: 0, mesesArriendados: 12, plusvalia: 3.8,
-    historial: [820000,830000,840000,850000,860000,870000,880000,890000,900000,900000,900000,900000],
-  },
-  {
-    id: 4, nombre: "Depto 201 – Macul", tipo: "2D/1B", m2: 48, comuna: "Macul",
-    valorMercado: 62_000_000, deudaHipotecaria: 58_000_000, fechaDeuda: "2023-06-01",
-    dividendoMensual: 380_000, contribuciones: 72_000, gastosComunes: 35_000, seguros: 14_000, otrosGastos: 20_000,
-    arriendoActual: 390_000, arriendoMercado: 450_000, mesesVacancia: 2, mesesArriendados: 10, plusvalia: 2.1,
-    historial: [350000,355000,360000,370000,380000,390000,0,0,390000,390000,390000,390000],
-  },
-];
-
 const TIPOS = ["1D/1B","2D/1B","2D/2B","3D/2B","3D/3B","4D/3B","Otro"];
 const COMUNAS = ["Providencia","Las Condes","Ñuñoa","Macul","Santiago Centro","Vitacura","La Florida","Maipú","San Miguel","Miraflores","Otra"];
 
@@ -846,6 +814,13 @@ function EscenariosTab({d,c}){
 // ─── VISTA PORTAFOLIO ─────────────────────────────────────────────────────────
 function VistaPortafolio({ deptos }) {
   const all = deptos.map(calc);
+  if (all.length === 0) return (
+    <div style={{padding:"60px 24px",textAlign:"center",color:"#475569"}}>
+      <div style={{fontSize:36,marginBottom:12}}>📊</div>
+      <div style={{fontSize:14,fontWeight:700,color:"#94a3b8",marginBottom:6}}>Aún no hay propiedades</div>
+      <div style={{fontSize:12}}>Agrega tu primera propiedad en la pestaña Deptos para ver el resumen consolidado.</div>
+    </div>
+  );
   const tV=all.reduce((s,d)=>s+d.valorMercado,0);
   const tD=all.reduce((s,d)=>s+d.deudaHipotecaria,0);
   const tF=all.reduce((s,d)=>s+d.flujoNeto,0);
@@ -1123,7 +1098,7 @@ export default function App() {
           e => { console.error("Error leyendo estado Pro:", e); setAcceso(false); }
         );
         const deps = await cargarDeptosDB(user.uid);
-        setDeptos(deps.length > 0 ? deps : DEMO.slice(0,1));
+        setDeptos(deps);
         setPantalla("app");
       } else {
         setUsuario(null);
