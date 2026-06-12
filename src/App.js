@@ -900,7 +900,7 @@ function Landing({ onEntrar, onPagar }) {
         <div style={{width:56,height:56,borderRadius:16,background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 20px"}}>🏢</div>
         <h1 style={{margin:"0 0 12px",fontSize:28,fontWeight:900,letterSpacing:-1,lineHeight:1.2}}>
           ¿Tus deptos realmente<br/>
-          <span style={{background:"linear-gradient(90deg,#3b82f6,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>te están ganando plata?</span>
+          <span style={{background:"linear-gradient(90deg,#3b82f6,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>te están generando dinero?</span>
         </h1>
         <p style={{margin:"0 0 32px",fontSize:15,color:"#64748b",lineHeight:1.6,maxWidth:320,marginLeft:"auto",marginRight:"auto"}}>
           Rentiq consolida todos tus arriendos, gastos y deudas en una sola vista. Sabrás en segundos qué mantener, qué ajustar y qué vender.
