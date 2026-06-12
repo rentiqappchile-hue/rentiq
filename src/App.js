@@ -3,6 +3,7 @@ import { auth, db, functions } from "./firebase";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
@@ -50,7 +51,22 @@ function AuthScreen({ onLogin, onVolver }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [cargando, setCargando] = useState(false);
+
+  const recuperarPass = async () => {
+    setError(""); setInfo("");
+    if (!email.trim()) { setError("Escribe tu email arriba y vuelve a presionar el enlace."); return; }
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setInfo("Te enviamos un correo para restablecer tu contraseña. Revisa también la carpeta de spam.");
+    } catch (e) {
+      if (e.code === "auth/invalid-email") setError("Email inválido.");
+      // No revelamos si el correo existe o no (privacidad)
+      else if (e.code === "auth/user-not-found") setInfo("Si ese correo está registrado, recibirás un mensaje para restablecer tu contraseña.");
+      else setError("No se pudo enviar el correo. Intenta de nuevo.");
+    }
+  };
 
   const handleSubmit = async () => {
     setError(""); setCargando(true);
@@ -91,7 +107,13 @@ function AuthScreen({ onLogin, onVolver }) {
             onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
             style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#f1f5f9",fontSize:14,padding:"12px 14px",outline:"none",boxSizing:"border-box"}}/>
         </div>
+        {modo==="login"&&(
+          <div style={{textAlign:"right",marginTop:-12,marginBottom:16}}>
+            <span onClick={recuperarPass} style={{fontSize:12,color:"#3b82f6",cursor:"pointer"}}>¿Olvidaste tu contraseña?</span>
+          </div>
+        )}
         {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#ef4444",marginBottom:16}}>{error}</div>}
+        {info&&<div style={{background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#22c55e",marginBottom:16}}>{info}</div>}
         <button onClick={handleSubmit} disabled={cargando} style={{
           width:"100%",background:"linear-gradient(135deg,#3b82f6,#6366f1)",
           border:"none",color:"#fff",fontSize:15,fontWeight:800,
@@ -102,7 +124,7 @@ function AuthScreen({ onLogin, onVolver }) {
         </button>
         <div style={{textAlign:"center",fontSize:13,color:"#475569"}}>
           {modo==="login"?"¿No tienes cuenta?":"¿Ya tienes cuenta?"}{" "}
-          <span onClick={()=>{setModo(modo==="login"?"registro":"login");setError("");}}
+          <span onClick={()=>{setModo(modo==="login"?"registro":"login");setError("");setInfo("");}}
             style={{color:"#3b82f6",cursor:"pointer",fontWeight:700}}>
             {modo==="login"?"Regístrate gratis":"Inicia sesión"}
           </span>

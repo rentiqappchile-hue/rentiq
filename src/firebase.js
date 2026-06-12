@@ -14,5 +14,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+auth.languageCode = "es"; // correos de Firebase (reset de contraseña, etc.) en español
 export const db = getFirestore(app);
 export const functions = getFunctions(app);
