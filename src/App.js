@@ -140,7 +140,8 @@ const COMUNAS = ["Providencia","Las Condes","Ñuñoa","Macul","Santiago Centro",
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 const fmt = (n, d = 0) => new Intl.NumberFormat("es-CL", { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
-const fmtUF = (p) => fmt(p / 38_000, 0) + " UF";
+const UF_CLP = 40_000; // valor referencial de la UF (usado en toda la app)
+const fmtUF = (p) => fmt(p / UF_CLP, 0) + " UF";
 const fmtM = (n) => {
   const abs = Math.abs(n), s = n < 0 ? "-" : "+";
   if (abs >= 1_000_000) return s + "$" + fmt(abs / 1_000_000, 1) + "M";
@@ -881,6 +882,208 @@ function VistaPortafolio({ deptos }) {
   );
 }
 
+// ─── EVALUAR COMPRA ───────────────────────────────────────────────────────────
+// Arriendo de mercado estimado por comuna, en $/m²/mes. Valores semilla
+// referenciales; se irán refinando con los arriendos reales de los usuarios.
+const ARRIENDO_M2 = {
+  "Vitacura": 13000, "Las Condes": 12000, "Providencia": 11000,
+  "Ñuñoa": 9500, "La Reina": 9500, "San Miguel": 8500,
+  "Huechuraba": 8000, "Santiago Centro": 8000, "Peñalolén": 7800,
+  "Macul": 7500, "Estación Central": 7500, "Independencia": 7500,
+  "La Florida": 7000, "La Cisterna": 7000, "Maipú": 6500,
+};
+const EVAL_COMUNAS = Object.keys(ARRIENDO_M2);
+
+// Rentabilidad neta = (arriendo anual − contribuciones − administración) / precio.
+// No se cuentan gastos comunes (los paga el arrendatario) ni provisión de vacancia.
+function evaluarCompra(precioUF, m2, comuna) {
+  const benchmark = ARRIENDO_M2[comuna] || 0;
+  const precioCLP = precioUF * UF_CLP;
+  const arriendoMensual = m2 * benchmark;
+  const arriendoAnual = arriendoMensual * 12;
+  const contribuciones = precioCLP * 0.005;
+  const administracion = arriendoAnual * 0.08;
+  const flujoNeto = arriendoAnual - contribuciones - administracion;
+  const rentNeta = precioCLP > 0 ? (flujoNeto / precioCLP) * 100 : 0;
+  // Escala anclada al mercado chileno: 6% neto ≈ nota 10, 3% ≈ nota 5.
+  const nota = Math.max(1, Math.min(10, Math.round(rentNeta / 0.6)));
+  const targetNota = Math.min(nota + 1, 10);
+  const targetRentFrac = targetNota * 0.006;
+  const precioObjetivoUF = (arriendoAnual * 0.92) / (targetRentFrac + 0.005) / UF_CLP;
+  return { precioUF, arriendoMensual, arriendoAnual, contribuciones, administracion, flujoNeto, rentNeta, nota, targetNota, precioObjetivoUF };
+}
+
+// Escenario con crédito hipotecario: rentabilidad sobre el pie (cash-on-cash).
+function evaluarCredito(res, piePct, tasaAnual, plazoAnios) {
+  const precioCLP = res.precioUF * UF_CLP;
+  const equity = precioCLP * (piePct / 100);
+  const credito = precioCLP - equity;
+  const i = tasaAnual / 100 / 12;
+  const n = plazoAnios * 12;
+  const dividendo = i > 0 && n > 0 ? credito * i / (1 - Math.pow(1 + i, -n)) : (n > 0 ? credito / n : 0);
+  const flujoMensual = res.arriendoMensual - res.contribuciones / 12 - res.administracion / 12 - dividendo;
+  const cashOnCash = equity > 0 ? (flujoMensual * 12) / equity * 100 : 0;
+  // Abono a capital del primer año: la parte del dividendo que no es interés
+  // (deuda que pagas y se convierte en patrimonio tuyo).
+  let saldo = credito, abonoCapitalAnual = 0;
+  for (let m = 0; m < Math.min(12, n); m++) {
+    const interes = saldo * i;
+    const abono = dividendo - interes;
+    abonoCapitalAnual += abono;
+    saldo -= abono;
+  }
+  const rentPatrimonial = equity > 0 ? (flujoMensual * 12 + abonoCapitalAnual) / equity * 100 : 0;
+  return { equity, credito, dividendo, flujoMensual, cashOnCash, abonoCapitalAnual, rentPatrimonial };
+}
+
+function veredictoNota(nota) {
+  if (nota <= 3) return { txt: "Inversión débil", c: "#ef4444" };
+  if (nota <= 5) return { txt: "Rentabilidad ajustada", c: "#f59e0b" };
+  if (nota <= 7) return { txt: "Buena inversión", c: "#3b82f6" };
+  return { txt: "Muy potente", c: "#22c55e" };
+}
+
+function EvaluarCompra() {
+  const [link, setLink] = useState("");
+  const [precio, setPrecio] = useState("");
+  const [m2, setM2] = useState("");
+  const [comuna, setComuna] = useState("Ñuñoa");
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState("");
+  const [conCredito, setConCredito] = useState(false);
+  const [pie, setPie] = useState("20");
+  const [tasa, setTasa] = useState("4,5");
+  const [plazo, setPlazo] = useState("25");
+
+  const inputStyle = {width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#f1f5f9",fontSize:14,fontWeight:600,padding:"11px 12px",outline:"none",boxSizing:"border-box"};
+
+  const evaluar = () => {
+    const p = parseInt(String(precio).replace(/\D/g,"")) || 0;
+    const s = parseInt(String(m2).replace(/\D/g,"")) || 0;
+    if (!p || !s) { setErr("Ingresa el precio en UF y la superficie en m²."); setRes(null); return; }
+    setErr("");
+    setRes(evaluarCompra(p, s, comuna));
+  };
+
+  const numF = (s) => parseFloat(String(s).replace(",",".").replace(/[^\d.]/g,"")) || 0;
+  const v = res ? veredictoNota(res.nota) : null;
+  const CIRC = 289, off = res ? CIRC * (1 - res.nota/10) : CIRC;
+  const cred = res && conCredito ? evaluarCredito(res, numF(pie), numF(tasa), numF(plazo)) : null;
+
+  return (
+    <div style={{padding:"14px 16px",paddingBottom:90,display:"flex",flexDirection:"column",gap:14}}>
+      <div>
+        <div style={{fontSize:16,fontWeight:800,color:"#f8fafc"}}>Evaluar una compra</div>
+        <div style={{fontSize:12,color:"#475569",marginTop:2}}>Pega el link de la publicación y completa 3 datos para obtener una nota de rentabilidad.</div>
+      </div>
+
+      <Card>
+        <label style={{fontSize:12,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:5}}>Link de la publicación <span style={{color:"#475569",fontWeight:400}}>(opcional)</span></label>
+        <input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://portalinmobiliario.com/..." style={{...inputStyle,marginBottom:14,fontWeight:400,fontSize:13}}/>
+
+        <div style={{display:"flex",gap:10,marginBottom:14}}>
+          <div style={{flex:1}}>
+            <label style={{fontSize:12,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:5}}>Precio (UF)</label>
+            <input value={precio} onChange={e=>setPrecio(e.target.value)} placeholder="3.900" inputMode="numeric" style={inputStyle}/>
+          </div>
+          <div style={{flex:1}}>
+            <label style={{fontSize:12,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:5}}>Superficie (m²)</label>
+            <input value={m2} onChange={e=>setM2(e.target.value)} placeholder="62" inputMode="numeric" style={inputStyle}/>
+          </div>
+        </div>
+
+        <label style={{fontSize:12,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:5}}>Comuna</label>
+        <select value={comuna} onChange={e=>setComuna(e.target.value)} style={{...inputStyle,marginBottom:16}}>
+          {EVAL_COMUNAS.map(c=><option key={c} value={c} style={{background:"#0f172a"}}>{c}</option>)}
+        </select>
+
+        {err&&<div style={{fontSize:11,color:"#ef4444",marginBottom:10}}>{err}</div>}
+        <button onClick={evaluar} style={{width:"100%",background:"linear-gradient(135deg,#3b82f6,#6366f1)",border:"none",color:"#fff",fontSize:14,fontWeight:800,padding:"13px",borderRadius:12,cursor:"pointer"}}>Evaluar inversión</button>
+      </Card>
+
+      {res&&<>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 0"}}>
+          <svg width="130" height="130" viewBox="0 0 130 130">
+            <circle cx="65" cy="65" r="46" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10"/>
+            <circle cx="65" cy="65" r="46" fill="none" stroke={v.c} strokeWidth="10" strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={off} transform="rotate(-90 65 65)"/>
+            <text x="65" y="63" textAnchor="middle" fontSize="38" fontWeight="800" fill="#f1f5f9">{res.nota}</text>
+            <text x="65" y="84" textAnchor="middle" fontSize="13" fill="#475569">de 10</text>
+          </svg>
+          <div style={{marginTop:8,background:v.c+"22",border:`1px solid ${v.c}55`,color:v.c,fontSize:13,fontWeight:800,padding:"5px 16px",borderRadius:20}}>{v.txt}</div>
+        </div>
+
+        <Card>
+          <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Cómo se calculó</div>
+          <LI l="Arriendo estimado /mes" v={"$"+fmt(res.arriendoMensual)} c="#94a3b8"/>
+          <LI l="Arriendo anual" v={"$"+fmt(res.arriendoAnual)} bold/>
+          <LI l="− Contribuciones (0,5% del precio)" v={"−$"+fmt(res.contribuciones)} c="#ef4444"/>
+          <LI l="− Administración/seguros (8%)" v={"−$"+fmt(res.administracion)} c="#ef4444"/>
+          <LI l="Flujo neto anual" v={"$"+fmt(res.flujoNeto)} bold/>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:10,marginTop:4,borderTop:"1px solid rgba(255,255,255,0.1)"}}>
+            <span style={{fontSize:13,fontWeight:700,color:"#f1f5f9"}}>Rentabilidad neta anual</span>
+            <span style={{fontSize:18,fontWeight:800,color:v.c}}>{fmt(res.rentNeta,1)}%</span>
+          </div>
+        </Card>
+
+        {res.nota<10&&(
+          <div style={{background:"linear-gradient(135deg,rgba(59,130,246,0.12),rgba(99,102,241,0.12))",border:"1px solid rgba(59,130,246,0.3)",borderRadius:12,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:22}}>🎯</span>
+            <div>
+              <div style={{fontSize:10,color:"#475569"}}>Precio objetivo para llegar a {res.targetNota}/10</div>
+              <div style={{fontSize:15,fontWeight:800,color:"#3b82f6"}}>Ofrece máximo {fmt(res.precioObjetivoUF,0)} UF</div>
+            </div>
+          </div>
+        )}
+
+        {/* Switch: simular con crédito */}
+        <button onClick={()=>setConCredito(c=>!c)} style={{width:"100%",background:conCredito?"rgba(139,92,246,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${conCredito?"rgba(139,92,246,0.4)":"rgba(255,255,255,0.1)"}`,color:conCredito?"#a78bfa":"#94a3b8",fontSize:13,fontWeight:700,padding:"12px",borderRadius:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          🏦 {conCredito?"Ocultar simulación con crédito":"Simular con crédito hipotecario"}
+        </button>
+
+        {cred&&<Card>
+          <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Escenario con crédito</div>
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
+            <div style={{flex:1}}>
+              <label style={{fontSize:11,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:4}}>Pie (%)</label>
+              <input value={pie} onChange={e=>setPie(e.target.value)} inputMode="decimal" style={{...inputStyle,padding:"9px 10px"}}/>
+            </div>
+            <div style={{flex:1}}>
+              <label style={{fontSize:11,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:4}}>Tasa anual (%)</label>
+              <input value={tasa} onChange={e=>setTasa(e.target.value)} inputMode="decimal" style={{...inputStyle,padding:"9px 10px"}}/>
+            </div>
+            <div style={{flex:1}}>
+              <label style={{fontSize:11,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:4}}>Plazo (años)</label>
+              <input value={plazo} onChange={e=>setPlazo(e.target.value)} inputMode="numeric" style={{...inputStyle,padding:"9px 10px"}}/>
+            </div>
+          </div>
+          <LI l="Pie (de tu bolsillo)" v={"$"+fmt(cred.equity)} bold/>
+          <LI l="Dividendo mensual" v={"−$"+fmt(cred.dividendo)} c="#ef4444"/>
+          <LI l="Flujo mensual con crédito" v={fmtM(cred.flujoMensual)} c={cred.flujoMensual>=0?"#22c55e":"#ef4444"} bold/>
+          <LI l="Abono a capital (1er año)" v={"+$"+fmt(cred.abonoCapitalAnual)} c="#22c55e"/>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderTop:"1px solid rgba(255,255,255,0.06)",marginTop:6}}>
+            <span style={{fontSize:12,color:"#94a3b8"}}>Rentabilidad de caja</span>
+            <span style={{fontSize:14,fontWeight:700,color:cred.cashOnCash>=0?"#22c55e":"#ef4444"}}>{fmt(cred.cashOnCash,1)}%</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:10,marginTop:2,borderTop:"1px solid rgba(255,255,255,0.1)"}}>
+            <div>
+              <span style={{fontSize:13,fontWeight:700,color:"#f1f5f9"}}>Rentabilidad patrimonial</span>
+              <div style={{fontSize:9,color:"#475569"}}>incluye abono a capital</div>
+            </div>
+            <span style={{fontSize:18,fontWeight:800,color:cred.rentPatrimonial>=0?"#22c55e":"#ef4444"}}>{fmt(cred.rentPatrimonial,1)}%</span>
+          </div>
+          <div style={{fontSize:10,color:"#475569",marginTop:10,lineHeight:1.5}}>
+            La <b style={{color:"#94a3b8",fontWeight:700}}>rentabilidad de caja</b> es solo el flujo de tu bolsillo. La <b style={{color:"#94a3b8",fontWeight:700}}>patrimonial</b> suma el abono a capital (deuda que pagas y se vuelve tuya). Ninguna incluye la plusvalía.
+          </div>
+        </Card>}
+
+        <div style={{fontSize:10,color:"#334155",textAlign:"center",lineHeight:1.5,padding:"0 8px"}}>
+          Estimación referencial basada en arriendos promedio por comuna. La nota mide la rentabilidad al contado; el crédito es un escenario aparte. No reemplaza una tasación.
+        </div>
+      </>}
+    </div>
+  );
+}
+
 // ─── LANDING PAGE ─────────────────────────────────────────────────────────────
 function Landing({ onEntrar, onPagar }) {
   const features = [
@@ -1240,20 +1443,24 @@ export default function App() {
       {vista==="editar"&&deptoSel&&(
         <FormularioDepto titulo="Editar propiedad" inicial={deptoSel} onGuardar={guardarEdicion} onCancelar={()=>setVista("detalle")}/>
       )}
+      {navTab==="evaluar"&&acceso&&<EvaluarCompra/>}
       {navTab==="portafolio"&&<VistaPortafolio deptos={deptos}/>}
 
       {vista!=="nuevo"&&vista!=="editar"&&(
         <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:100,background:"rgba(8,15,26,0.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,0.08)",display:"flex"}}>
-          {[{k:"deptos",i:"🏠",l:"Deptos"},{k:"portafolio",i:"📊",l:"Portafolio"}].map(t=>(
-            <button key={t.k} onClick={()=>{setNavTab(t.k);irALista();}} style={{
+          {[{k:"deptos",i:"🏠",l:"Deptos"},{k:"evaluar",i:"🎯",l:"Evaluar"},{k:"portafolio",i:"📊",l:"Portafolio"}].map(t=>{
+            const proLock = t.k==="evaluar" && !acceso;
+            return (
+            <button key={t.k} onClick={()=>{ if(proLock){irAPaywall();return;} setNavTab(t.k);irALista(); }} style={{
               flex:1,background:"none",border:"none",cursor:"pointer",
               padding:"10px 0 14px",color:navTab===t.k?"#3b82f6":"#475569",
               display:"flex",flexDirection:"column",alignItems:"center",gap:3,
             }}>
-              <span style={{fontSize:20}}>{t.i}</span>
+              <span style={{fontSize:20}}>{proLock?"🔒":t.i}</span>
               <span style={{fontSize:10,fontWeight:navTab===t.k?700:400}}>{t.l}</span>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
