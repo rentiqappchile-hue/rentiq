@@ -1135,7 +1135,7 @@ function Landing({ onEntrar, onPagar }) {
         <div style={{background:"linear-gradient(135deg,rgba(59,130,246,0.14),rgba(139,92,246,0.14))",border:"1px solid rgba(59,130,246,0.35)",borderRadius:16,padding:"20px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-18,right:-8,fontSize:96,opacity:0.08,pointerEvents:"none"}}>🎯</div>
           <div style={{display:"inline-block",background:"rgba(59,130,246,0.2)",color:"#3b82f6",fontSize:10,fontWeight:800,letterSpacing:1,padding:"3px 10px",borderRadius:20,marginBottom:12}}>NUEVO</div>
-          <div style={{fontSize:18,fontWeight:900,marginBottom:8,lineHeight:1.3}}>¿Estás por comprar un depto?<br/>Sabe si conviene antes de ofertar.</div>
+          <div style={{fontSize:18,fontWeight:900,marginBottom:8,lineHeight:1.3}}>¿Estás por invertir en una propiedad? Con Rentiq puedes saber si realmente conviene antes de ofertar</div>
           <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6,marginBottom:16}}>Pega el link de Portal Inmobiliario, ingresa precio y comuna, y obtén una nota de 1 a 10 de rentabilidad — al contado y simulando crédito hipotecario.</div>
           <div style={{display:"flex",alignItems:"center",gap:14,background:"rgba(0,0,0,0.22)",borderRadius:12,padding:"12px 16px"}}>
             <div style={{width:54,height:54,borderRadius:"50%",border:"4px solid #22c55e",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
