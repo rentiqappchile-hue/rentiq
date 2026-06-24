@@ -1084,6 +1084,262 @@ function EvaluarCompra() {
   );
 }
 
+// ─── DECLARACIÓN DE RENTA (PRO) ───────────────────────────────────────────────
+// Estima cuánto debe pagar (o cuánto le devuelven) a un arrendador persona
+// natural en la operación renta de abril. Toma los arriendos ya registrados en
+// Rentiq, los suma a la renta del trabajo para determinar el tramo del Impuesto
+// Global Complementario (IGC), descuenta lo que el empleador ya retuvo mes a mes,
+// y calcula automáticamente el régimen (general vs simplificado) que más conviene.
+//
+// ⚠️ Cifras REFERENCIALES. La tabla del IGC y el valor de la UTA cambian cada
+// año — actualizarlos en sii.cl antes de cada temporada de renta.
+
+// Valor referencial de la UTA (Unidad Tributaria Anual). ACTUALIZAR cada año.
+const UTA_CLP = 803_376;
+
+// Tasa anual referencial para estimar los intereses hipotecarios a partir del
+// saldo de la deuda (el interés anual ≈ saldo × tasa). Es solo una estimación
+// inicial; el usuario debe reemplazarla con el monto real del certificado del banco.
+const TASA_HIPOTECARIA_EST = 0.045;
+
+// Tabla del IGC anual. Los límites y la rebaja van en UTA (así la publica el SII).
+const TABLA_IGC = [
+  { hastaUTA: 13.5,     factor: 0,     rebajaUTA: 0 },
+  { hastaUTA: 30,       factor: 0.04,  rebajaUTA: 0.54 },
+  { hastaUTA: 50,       factor: 0.08,  rebajaUTA: 1.74 },
+  { hastaUTA: 70,       factor: 0.135, rebajaUTA: 4.49 },
+  { hastaUTA: 90,       factor: 0.23,  rebajaUTA: 11.14 },
+  { hastaUTA: 120,      factor: 0.304, rebajaUTA: 17.80 },
+  { hastaUTA: 310,      factor: 0.35,  rebajaUTA: 23.32 },
+  { hastaUTA: Infinity, factor: 0.40,  rebajaUTA: 38.82 },
+];
+
+// Impuesto Global Complementario anual (en pesos) sobre una renta anual en pesos.
+function igc(rentaAnualCLP) {
+  if (rentaAnualCLP <= 0) return 0;
+  const rentaUTA = rentaAnualCLP / UTA_CLP;
+  const tramo = TABLA_IGC.find(t => rentaUTA <= t.hastaUTA);
+  return Math.max(0, (rentaUTA * tramo.factor - tramo.rebajaUTA) * UTA_CLP);
+}
+
+// Tasa marginal (tramo) del IGC para una renta anual, como fracción (0–0.40).
+function tramoIGC(rentaAnualCLP) {
+  const rentaUTA = Math.max(0, rentaAnualCLP) / UTA_CLP;
+  return TABLA_IGC.find(t => rentaUTA <= t.hastaUTA).factor;
+}
+
+// Calcula el resultado tributario en ambos regímenes y elige el que más conviene.
+function calcularRenta({ sueldoBrutoMensual, ingresoArriendoAnual, gastosArriendoAnual, interesesHipotecarios }) {
+  const rentaTrabajoAnual = sueldoBrutoMensual * 12;
+  // Paso 1: lo que el empleador ya retuvo mes a mes (IGC sobre la renta del trabajo).
+  const retenciones = igc(rentaTrabajoAnual);
+
+  // Régimen general: gastos reales con comprobantes (incluye intereses hipotecarios).
+  const gastosGeneral = gastosArriendoAnual + interesesHipotecarios;
+  const arriendoNetoGeneral = Math.max(0, ingresoArriendoAnual - gastosGeneral);
+  const igcGeneral = igc(rentaTrabajoAnual + arriendoNetoGeneral);
+  const resultadoGeneral = igcGeneral - retenciones;
+
+  // Régimen simplificado: el SII presume un 30% de gasto, sin comprobantes.
+  const arriendoNetoSimple = ingresoArriendoAnual * 0.7;
+  const igcSimple = igc(rentaTrabajoAnual + arriendoNetoSimple);
+  const resultadoSimple = igcSimple - retenciones;
+
+  const generalConviene = resultadoGeneral <= resultadoSimple;
+  return {
+    rentaTrabajoAnual, retenciones,
+    general: { gastos: gastosGeneral, arriendoNeto: arriendoNetoGeneral, igc: igcGeneral, resultado: resultadoGeneral },
+    simple:  { arriendoNeto: arriendoNetoSimple, igc: igcSimple, resultado: resultadoSimple },
+    ganador: generalConviene ? "general" : "simple",
+    resultado: generalConviene ? resultadoGeneral : resultadoSimple,
+    ahorro: Math.abs(resultadoGeneral - resultadoSimple),
+  };
+}
+
+function DeclaracionRenta({ deptos }) {
+  // Pre-cargado desde las propiedades ya registradas en Rentiq (gran diferenciador).
+  const porPropiedad = deptos.map(d => {
+    const dividendoAnual = (Number(d.dividendoMensual)||0) * 12;
+    const interesEst = (Number(d.deudaHipotecaria)||0) * TASA_HIPOTECARIA_EST;
+    return {
+      nombre: d.nombre || "Propiedad",
+      arriendoAnual: (Number(d.arriendoActual)||0) * (Number(d.mesesArriendados)||0),
+      contribAnual: (Number(d.contribuciones)||0) * 12,
+      otrosAnual: ((Number(d.seguros)||0) + (Number(d.otrosGastos)||0)) * 12,
+      // Interés anual ≈ saldo × tasa, acotado al dividendo anual.
+      interesAnual: Math.round(dividendoAnual > 0 ? Math.min(interesEst, dividendoAnual) : interesEst),
+    };
+  });
+  const sumar = (k) => porPropiedad.reduce((s,p)=>s+p[k],0);
+  const arriendoSugerido = sumar("arriendoAnual");
+  const contribSugerido = sumar("contribAnual");
+  const otrosSugerido = sumar("otrosAnual");
+  const interesesSugerido = sumar("interesAnual");
+
+  // Tope de cada slider: una base fija que se amplía si el dato precargado la supera.
+  const tope = (base, val) => Math.max(base, Math.ceil((val*1.5)/base)*base);
+  const maxSueldo = 8_000_000;
+  const maxArriendo = tope(40_000_000, arriendoSugerido);
+  const maxInteres = tope(12_000_000, interesesSugerido);
+  const maxContrib = tope(3_000_000, contribSugerido);
+  const maxOtros = tope(6_000_000, otrosSugerido);
+
+  const [sueldoMensual, setSueldoMensual] = useState(2_000_000);
+  const [ingreso, setIngreso] = useState(arriendoSugerido);
+  const [intereses, setIntereses] = useState(interesesSugerido);
+  const [contribuciones, setContribuciones] = useState(contribSugerido);
+  const [otros, setOtros] = useState(otrosSugerido);
+
+  const r = useMemo(() => calcularRenta({
+    sueldoBrutoMensual: sueldoMensual,
+    ingresoArriendoAnual: ingreso,
+    gastosArriendoAnual: contribuciones + otros,
+    interesesHipotecarios: intereses,
+  }), [sueldoMensual, ingreso, intereses, contribuciones, otros]);
+
+  const esDevolucion = r.resultado < 0;
+  const colorRes = esDevolucion ? "#22c55e" : r.resultado > 0 ? "#ef4444" : "#94a3b8";
+  const regNombre = r.ganador === "general" ? "General — gastos reales" : "Simplificado — 30% presunto";
+  const netoGanador = r.ganador === "general" ? r.general.arriendoNeto : r.simple.arriendoNeto;
+  const igcGanador = r.ganador === "general" ? r.general.igc : r.simple.igc;
+  const otroResultado = r.ganador === "general" ? r.simple.resultado : r.general.resultado;
+
+  const baseGeneral = r.rentaTrabajoAnual + r.general.arriendoNeto;
+  const baseSimple = r.rentaTrabajoAnual + r.simple.arriendoNeto;
+  const pct = (f) => fmt(f*100, (f*100) % 1 === 0 ? 0 : 1) + "%";
+  const etiquetaRes = (x) => x > 0 ? "Pago adicional" : x < 0 ? "Devolución" : "Sin diferencia";
+  const signo = (x) => x < 0 ? "−$"+fmt(Math.abs(x)) : "+$"+fmt(x);
+
+  // Sub-componentes de la calculadora interactiva.
+  const Slider = ({ label, sub, value, set, min, max, step, color, sufijo, ultimo }) => (
+    <div style={{marginBottom: ultimo ? 0 : 18}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:7}}>
+        <span style={{fontSize:12,color:"#94a3b8",lineHeight:1.3}}>{label}{sub && <span style={{color:color||"#a78bfa",fontWeight:600}}> {sub}</span>}</span>
+        <span style={{fontSize:14,fontWeight:800,color:color||"#f1f5f9",whiteSpace:"nowrap"}}>${fmt(value)}{sufijo||""}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e=>set(+e.target.value)} style={{width:"100%",accentColor:color||"#3b82f6"}}/>
+    </div>
+  );
+  const Paso = ({ n, titulo, children }) => (
+    <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+      <div style={{width:24,height:24,borderRadius:"50%",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.4)",color:"#3b82f6",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{n}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",marginBottom:8}}>{titulo}</div>
+        {children}
+      </div>
+    </div>
+  );
+  const Flecha = () => <div style={{textAlign:"center",color:"#334155",fontSize:14,margin:"10px 0"}}>↓</div>;
+  const Col = ({ title, value, sub, win }) => (
+    <div style={{flex:1,minWidth:0,background:win?"rgba(34,197,94,0.08)":"rgba(255,255,255,0.03)",border:win?"1px solid rgba(34,197,94,0.45)":"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 11px"}}>
+      <div style={{fontSize:10,color:win?"#22c55e":"#64748b",marginBottom:3,fontWeight:win?700:400}}>{win?"✓ ":""}{title}</div>
+      <div style={{fontSize:15,fontWeight:800,color:"#f1f5f9"}}>{value}</div>
+      {sub && <div style={{fontSize:9.5,color:"#475569",marginTop:2,lineHeight:1.3}}>{sub}</div>}
+    </div>
+  );
+
+  const imprimirResumen = () => {
+    const w = window.open("", "_blank");
+    if (!w) { alert("Tu navegador bloqueó la ventana. Permite las ventanas emergentes para descargar el resumen."); return; }
+    const fila = (l,v)=>`<tr><td style="padding:7px 0;color:#475569">${l}</td><td style="padding:7px 0;text-align:right;font-weight:700">${v}</td></tr>`;
+    const titular = esDevolucion
+      ? `Devolución estimada: $${fmt(Math.abs(r.resultado))}`
+      : r.resultado > 0 ? `Pago estimado en abril: $${fmt(r.resultado)}` : "Sin diferencia a pagar";
+    w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Resumen Declaración de Renta — Rentiq</title></head>
+    <body style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:32px auto;color:#0f172a;padding:0 16px">
+      <h2 style="margin:0">Resumen estimado · Declaración de Renta</h2>
+      <p style="color:#64748b;margin:4px 0 20px">Generado con Rentiq — cifras referenciales</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        ${fila("Renta del trabajo (anual)", "$"+fmt(r.rentaTrabajoAnual))}
+        ${fila("Impuesto ya retenido por el empleador", "$"+fmt(r.retenciones))}
+        ${fila("Ingreso por arriendo (anual)", "$"+fmt(ingreso))}
+        ${fila("Régimen elegido", regNombre)}
+        ${fila("Arriendo afecto (neto)", "$"+fmt(netoGanador))}
+        ${fila("IGC sobre la renta total", "$"+fmt(igcGanador))}
+      </table>
+      <h3 style="margin-top:22px;color:${esDevolucion?'#16a34a':r.resultado>0?'#dc2626':'#475569'}">${titular}</h3>
+      <p style="font-size:11px;color:#94a3b8;margin-top:28px;line-height:1.5">Estimación referencial generada por Rentiq. No constituye asesoría tributaria ni reemplaza la declaración oficial en el SII. Verifica los montos con tu certificado de rentas y el portal del SII antes de declarar.</p>
+      <script>window.onload=function(){window.print()}</script>
+    </body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <div style={{padding:"14px 16px",paddingBottom:96,display:"flex",flexDirection:"column",gap:18}}>
+      <div>
+        <div style={{fontSize:16,fontWeight:800,color:"#f8fafc"}}>Declaración de Renta</div>
+        <div style={{fontSize:12,color:"#475569",marginTop:2}}>Mueve los valores y mira el resultado en vivo. Plazo SII: 30 de abril.</div>
+      </div>
+
+      {/* DATOS DEL USUARIO */}
+      <div>
+        <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Datos del usuario</div>
+        <Card>
+          <Slider label="Renta imponible mensual (trabajo)" value={sueldoMensual} set={setSueldoMensual} min={0} max={maxSueldo} step={50_000} sufijo="/mes"/>
+          <Slider label="Ingresos anuales por arriendo" value={ingreso} set={setIngreso} min={0} max={maxArriendo} step={100_000}/>
+          <Slider label="Intereses hipotecarios anuales" sub="↓ bajan la base" color="#a78bfa" value={intereses} set={setIntereses} min={0} max={maxInteres} step={50_000}/>
+          <Slider label="Contribuciones anuales" value={contribuciones} set={setContribuciones} min={0} max={maxContrib} step={10_000}/>
+          <Slider label="Otros gastos comprobados (reparaciones, admin, seguros)" value={otros} set={setOtros} min={0} max={maxOtros} step={10_000} ultimo/>
+        </Card>
+        {interesesSugerido>0 && (
+          <div style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:8,padding:"8px 12px",marginTop:8,fontSize:11,color:"#f59e0b",lineHeight:1.5}}>
+            ⚠️ Arriendos, gastos e intereses vienen pre-cargados desde tus propiedades. Los intereses son una estimación (tasa ref. 4,5%): <b>reemplázalos con tu certificado anual del banco</b> antes de declarar.
+          </div>
+        )}
+      </div>
+
+      {/* CÁLCULO PASO A PASO */}
+      <div>
+        <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Cálculo paso a paso</div>
+        <Card>
+          <Paso n={1} titulo="Impuesto retenido por empleador (ya pagado mes a mes)">
+            <div style={{fontSize:20,fontWeight:800,color:"#f1f5f9"}}>${fmt(r.retenciones)}</div>
+            <div style={{fontSize:11,color:"#475569",marginTop:2}}>Sueldo anual ${fmt(r.rentaTrabajoAnual)} · tramo {pct(tramoIGC(r.rentaTrabajoAnual))}</div>
+          </Paso>
+          <Flecha/>
+          <Paso n={2} titulo="Base imponible total (trabajo + arriendo neto)">
+            <div style={{display:"flex",gap:8}}>
+              <Col title="Régimen general" value={"$"+fmt(baseGeneral)} sub={`Arriendo neto $${fmt(r.general.arriendoNeto)} · gastos reales $${fmt(r.general.gastos)}`}/>
+              <Col title="Régimen simplificado" value={"$"+fmt(baseSimple)} sub={`Arriendo neto $${fmt(r.simple.arriendoNeto)} · 30% presunto ($${fmt(ingreso*0.3)})`}/>
+            </div>
+          </Paso>
+          <Flecha/>
+          <Paso n={3} titulo="IGC total sobre base completa">
+            <div style={{display:"flex",gap:8}}>
+              <Col title="Régimen general" value={"$"+fmt(r.general.igc)} sub={`tramo ${pct(tramoIGC(baseGeneral))}`}/>
+              <Col title="Régimen simplificado" value={"$"+fmt(r.simple.igc)} sub={`tramo ${pct(tramoIGC(baseSimple))}`}/>
+            </div>
+          </Paso>
+          <Flecha/>
+          <Paso n={4} titulo="Resultado = IGC total − retenciones ya pagadas">
+            <div style={{display:"flex",gap:8}}>
+              <Col title="Régimen general" value={signo(r.general.resultado)} sub={etiquetaRes(r.general.resultado)} win={r.ganador==="general"}/>
+              <Col title="Régimen simplif." value={signo(r.simple.resultado)} sub={etiquetaRes(r.simple.resultado)} win={r.ganador==="simple"}/>
+            </div>
+          </Paso>
+        </Card>
+      </div>
+
+      {/* RESULTADO FINAL */}
+      <div style={{background:colorRes+"14",border:`1px solid ${colorRes}55`,borderRadius:14,padding:"18px 16px",textAlign:"center"}}>
+        <div style={{fontSize:13,fontWeight:700,color:colorRes,marginBottom:4}}>
+          {esDevolucion?"Te devuelven impuesto":r.resultado>0?"Debes pagar impuesto adicional":"Sin diferencia a pagar"}
+        </div>
+        <div style={{fontSize:32,fontWeight:900,color:colorRes}}>{esDevolucion?"+$"+fmt(Math.abs(r.resultado)):r.resultado>0?"+$"+fmt(r.resultado):"$0"}</div>
+        {r.ahorro>0 && (
+          <div style={{fontSize:11,color:"#64748b",marginTop:6}}>Régimen {r.ganador==="general"?"general":"simplificado"} · versus {signo(otroResultado)} con el otro régimen</div>
+        )}
+      </div>
+
+      <button onClick={imprimirResumen} style={{width:"100%",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.4)",color:"#3b82f6",fontSize:14,fontWeight:700,padding:"13px",borderRadius:12,cursor:"pointer"}}>📄 Descargar resumen (PDF)</button>
+
+      <div style={{fontSize:11,color:"#475569",lineHeight:1.5,textAlign:"center"}}>
+        Estimación referencial. No reemplaza la declaración oficial en el SII ni la asesoría de un contador. Verifica los montos con tu certificado de rentas.
+      </div>
+    </div>
+  );
+}
+
 // ─── LANDING PAGE ─────────────────────────────────────────────────────────────
 function Landing({ onEntrar, onPagar }) {
   const features = [
@@ -1092,6 +1348,7 @@ function Landing({ onEntrar, onPagar }) {
     { i:"🎯", t:"Recomendación inteligente", d:"La app te dice si conviene mantener, subir el arriendo o vender." },
     { i:"💸", t:"Control de gastos", d:"Dividendo, contribuciones, gastos comunes, seguros y más — todo en un lugar." },
     { i:"📈", t:"Simulador de escenarios", d:"¿Qué pasa si subo el arriendo 15%? Calcula el impacto en tiempo real." },
+    { i:"🧾", t:"Declaración de renta", d:"Estima cuánto pagas o te devuelven por tus arriendos en abril, con tus datos ya cargados. Régimen óptimo elegido automáticamente." },
     { i:"🏦", t:"Alerta de deuda", d:"Te avisa cuando el saldo hipotecario lleva más de 6 meses sin actualizar." },
     { i:"📱", t:"100% móvil", d:"Diseñada para revisar desde el celular en cualquier momento." },
   ];
@@ -1202,7 +1459,7 @@ function Landing({ onEntrar, onPagar }) {
                 <div style={{fontSize:10,color:"#475569"}}>CLP / mes</div>
               </div>
             </div>
-            {["Propiedades ilimitadas","Simulador de escenarios","Alertas de deuda","Historial de arriendos","Soporte prioritario"].map(i=>(
+            {["Propiedades ilimitadas","Simulador de escenarios","Declaración de renta automática","Alertas de deuda","Historial de arriendos","Soporte prioritario"].map(i=>(
               <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
                 <span style={{fontSize:12,color:"#3b82f6"}}>✓</span>
                 <span style={{fontSize:12,color:"#94a3b8"}}>{i}</span>
@@ -1464,12 +1721,13 @@ export default function App() {
         <FormularioDepto titulo="Editar propiedad" inicial={deptoSel} onGuardar={guardarEdicion} onCancelar={()=>setVista("detalle")}/>
       )}
       {navTab==="evaluar"&&acceso&&<EvaluarCompra/>}
+      {navTab==="renta"&&acceso&&<DeclaracionRenta deptos={deptos}/>}
       {navTab==="portafolio"&&<VistaPortafolio deptos={deptos}/>}
 
       {vista!=="nuevo"&&vista!=="editar"&&(
         <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:100,background:"rgba(8,15,26,0.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,0.08)",display:"flex"}}>
-          {[{k:"deptos",i:"🏠",l:"Deptos"},{k:"evaluar",i:"🎯",l:"Evaluar"},{k:"portafolio",i:"📊",l:"Portafolio"}].map(t=>{
-            const proLock = t.k==="evaluar" && !acceso;
+          {[{k:"deptos",i:"🏠",l:"Deptos"},{k:"evaluar",i:"🎯",l:"Evaluar"},{k:"renta",i:"🧾",l:"Renta"},{k:"portafolio",i:"📊",l:"Portafolio"}].map(t=>{
+            const proLock = (t.k==="evaluar"||t.k==="renta") && !acceso;
             return (
             <button key={t.k} onClick={()=>{ if(proLock){irAPaywall();return;} setNavTab(t.k);irALista(); }} style={{
               flex:1,background:"none",border:"none",cursor:"pointer",
