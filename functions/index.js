@@ -1,4 +1,5 @@
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
@@ -9,6 +10,9 @@ setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 // Access token de Mercado Pago. Configurar con:
 //   firebase functions:secrets:set MP_ACCESS_TOKEN
 const MP_ACCESS_TOKEN = defineSecret("MP_ACCESS_TOKEN");
+
+// Debe coincidir con el preapproval_plan_id de MP_CHECKOUT_URL en src/App.js.
+const PREAPPROVAL_PLAN_ID = "008ace555efd44858a893539c2a43208";
 
 // Resuelve el uid del usuario dueño de una suscripción de MP.
 // 1° intenta external_reference (el cliente lo agrega a la URL del checkout);
@@ -25,6 +29,36 @@ async function resolverUid(sub) {
     console.warn(`payer_email sin cuenta en Firebase: ${sub.payer_email}`);
   }
   return null;
+}
+
+// Aplica el estado de una suscripción MP al usuario correspondiente en Firestore.
+async function activarProSegunSuscripcion(sub) {
+  const uid = await resolverUid(sub);
+  if (!uid) {
+    // Queda en los logs para vincularlo a mano si hace falta.
+    console.error(`Suscripción ${sub.id} sin usuario identificable`, {
+      external_reference: sub.external_reference,
+      payer_email: sub.payer_email,
+      status: sub.status,
+    });
+    return;
+  }
+
+  const pro = sub.status === "authorized";
+  await admin.firestore().doc(`usuarios/${uid}`).set(
+    {
+      pro,
+      suscripcion: {
+        tipo: "mercadopago",
+        id: sub.id,
+        status: sub.status,
+        planId: sub.preapproval_plan_id || null,
+        actualizado: admin.firestore.FieldValue.serverTimestamp(),
+      },
+    },
+    { merge: true }
+  );
+  console.log(`Suscripción ${sub.id} (${sub.status}) → usuario ${uid}, pro=${pro}`);
 }
 
 // ─── WEBHOOK MERCADO PAGO ─────────────────────────────────────────────────────
@@ -59,41 +93,67 @@ exports.mpWebhook = onRequest({ secrets: [MP_ACCESS_TOKEN], invoker: "public" },
       throw new Error(`API de MP respondió ${resp.status}`);
     }
     const sub = await resp.json();
-
-    const uid = await resolverUid(sub);
-    if (!uid) {
-      // 200 para que MP no reintente: el dato nunca va a mejorar solo.
-      // Queda en los logs para vincularlo a mano si hace falta.
-      console.error(`Suscripción ${sub.id} sin usuario identificable`, {
-        external_reference: sub.external_reference,
-        payer_email: sub.payer_email,
-        status: sub.status,
-      });
-      res.status(200).send("usuario no identificado");
-      return;
-    }
-
-    const pro = sub.status === "authorized";
-    await admin.firestore().doc(`usuarios/${uid}`).set(
-      {
-        pro,
-        suscripcion: {
-          tipo: "mercadopago",
-          id: sub.id,
-          status: sub.status,
-          planId: sub.preapproval_plan_id || null,
-          actualizado: admin.firestore.FieldValue.serverTimestamp(),
-        },
-      },
-      { merge: true }
-    );
-    console.log(`Suscripción ${sub.id} (${sub.status}) → usuario ${uid}, pro=${pro}`);
+    await activarProSegunSuscripcion(sub);
     res.status(200).send("ok");
   } catch (e) {
     console.error("mpWebhook error:", e);
     res.status(500).send("error"); // 5xx hace que MP reintente la notificación
   }
 });
+
+// ─── VERIFICACIÓN INSTANTÁNEA AL VOLVER DEL CHECKOUT ─────────────────────────
+// El checkout de MP redirige de vuelta a Rentiq (back_url) con el preapproval_id
+// en la URL. El cliente llama esto apenas vuelve, para no depender de esperar
+// al webhook (que no llega) ni al respaldo programado (cada 15 min).
+exports.verificarSuscripcion = onCall({ secrets: [MP_ACCESS_TOKEN] }, async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+
+  const id = String(request.data?.preapprovalId || "").trim();
+  if (!id || !/^[a-zA-Z0-9-]+$/.test(id)) {
+    throw new HttpsError("invalid-argument", "ID de suscripción inválido.");
+  }
+
+  const resp = await fetch(`https://api.mercadopago.com/preapproval/${id}`, {
+    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN.value()}` },
+  });
+  if (!resp.ok) {
+    throw new HttpsError("not-found", "No se pudo verificar la suscripción.");
+  }
+  const sub = await resp.json();
+  await activarProSegunSuscripcion(sub);
+  return { status: sub.status };
+});
+
+// ─── RESPALDO: SINCRONIZACIÓN PERIÓDICA DE SUSCRIPCIONES ─────────────────────
+// Mercado Pago no siempre entrega la notificación del webhook para preapproval
+// (comportamiento confirmado: ni una sola llegó en meses, incluso con el
+// webhook verificado y funcionando vía "Simular notificación"). Como respaldo,
+// cada 15 min recorremos todas las suscripciones del plan vía la API de
+// búsqueda y aplicamos el mismo estado que aplicaría el webhook.
+exports.syncSuscripcionesMP = onSchedule(
+  { schedule: "every 15 minutes", secrets: [MP_ACCESS_TOKEN] },
+  async () => {
+    const limit = 50;
+    let offset = 0;
+    while (true) {
+      const resp = await fetch(
+        `https://api.mercadopago.com/preapproval/search?preapproval_plan_id=${PREAPPROVAL_PLAN_ID}&limit=${limit}&offset=${offset}`,
+        { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN.value()}` } }
+      );
+      if (!resp.ok) {
+        console.error(`syncSuscripcionesMP: API de MP respondió ${resp.status}`);
+        return;
+      }
+      const data = await resp.json();
+      const results = data.results || [];
+      for (const sub of results) {
+        await activarProSegunSuscripcion(sub);
+      }
+      if (results.length < limit) break;
+      offset += limit;
+    }
+  }
+);
 
 // ─── CANJE DE CÓDIGOS DE ACCESO ───────────────────────────────────────────────
 // Los códigos viven en la colección `codigosAcceso` (solo accesible vía Admin

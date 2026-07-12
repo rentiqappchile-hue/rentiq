@@ -1492,9 +1492,11 @@ function Paywall({ usuario, onVolver }) {
   const [esperandoPago, setEsperandoPago] = useState(false);
 
   const pagarConMP = () => {
-    // external_reference vincula la suscripción con este usuario; el webhook
-    // (Cloud Function) confirma el pago contra la API de MP y activa Pro.
-    window.open(`${MP_CHECKOUT_URL}&external_reference=${encodeURIComponent(usuario.uid)}`, "_blank");
+    // external_reference vincula la suscripción con este usuario. back_url hace
+    // que MP redirija de vuelta con el preapproval_id, y el efecto en App()
+    // llama a verificarSuscripcion para activar Pro al instante al volver.
+    const backUrl = encodeURIComponent(`${window.location.origin}${window.location.pathname}`);
+    window.open(`${MP_CHECKOUT_URL}&external_reference=${encodeURIComponent(usuario.uid)}&back_url=${backUrl}`, "_blank");
     setEsperandoPago(true);
   };
 
@@ -1612,6 +1614,17 @@ export default function App() {
     });
     return () => { if (unsubDoc) unsubDoc(); unsubAuth(); };
   }, []);
+
+  // Al volver del checkout de MP (back_url), la URL trae ?preapproval_id=...
+  // Se verifica esa suscripción al instante en vez de esperar el webhook.
+  useEffect(() => {
+    if (!usuario) return;
+    const preapprovalId = new URLSearchParams(window.location.search).get("preapproval_id");
+    if (!preapprovalId) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    httpsCallable(functions, "verificarSuscripcion")({ preapprovalId })
+      .catch(e => console.error("Error verificando suscripción:", e));
+  }, [usuario]);
 
   // Si Pro se activa (pago confirmado o código canjeado) mientras el usuario
   // está en el paywall, llevarlo directo a la app.
