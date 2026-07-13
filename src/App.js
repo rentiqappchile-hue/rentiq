@@ -12,8 +12,6 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 
-const MP_CHECKOUT_URL = "https://www.mercadopago.cl/subscriptions/checkout?preapproval_plan_id=008ace555efd44858a893539c2a43208";
-
 
 // ─── FIRESTORE HELPERS ────────────────────────────────────────────────────────
 async function cargarDeptosDB(uid) {
@@ -1490,14 +1488,24 @@ function Paywall({ usuario, onVolver }) {
   const [error, setError] = useState("");
   const [procesando, setProcesando] = useState(false);
   const [esperandoPago, setEsperandoPago] = useState(false);
+  const [errorPago, setErrorPago] = useState("");
 
-  const pagarConMP = () => {
-    // external_reference vincula la suscripción con este usuario. back_url hace
-    // que MP redirija de vuelta con el preapproval_id, y el efecto en App()
-    // llama a verificarSuscripcion para activar Pro al instante al volver.
-    const backUrl = encodeURIComponent(`${window.location.origin}${window.location.pathname}`);
-    window.open(`${MP_CHECKOUT_URL}&external_reference=${encodeURIComponent(usuario.uid)}&back_url=${backUrl}`, "_blank");
-    setEsperandoPago(true);
+  const pagarConMP = async () => {
+    // La suscripción se crea vía Cloud Function (no con un link estático) para
+    // que Mercado Pago guarde el external_reference; el checkout público lo
+    // ignoraba. back_url hace que MP redirija de vuelta con el preapproval_id,
+    // y el efecto en App() llama a verificarSuscripcion para activar Pro al
+    // instante al volver.
+    setErrorPago("");
+    try {
+      const backUrl = `${window.location.origin}${window.location.pathname}`;
+      const { data } = await httpsCallable(functions, "crearSuscripcion")({ backUrl });
+      window.open(data.initPoint, "_blank");
+      setEsperandoPago(true);
+    } catch (e) {
+      console.error("Error creando suscripción:", e);
+      setErrorPago("No se pudo iniciar el pago. Intenta de nuevo.");
+    }
   };
 
   const validarCodigo = async () => {
@@ -1540,6 +1548,10 @@ function Paywall({ usuario, onVolver }) {
         }}>
           💳 Pagar con Mercado Pago
         </button>
+
+        {errorPago&&(
+          <div style={{fontSize:12,color:"#ef4444",textAlign:"center",marginBottom:16}}>{errorPago}</div>
+        )}
 
         {esperandoPago&&(
           <div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.25)",borderRadius:10,padding:"12px 14px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>

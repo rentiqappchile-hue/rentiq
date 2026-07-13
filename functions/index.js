@@ -11,7 +11,6 @@ setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 //   firebase functions:secrets:set MP_ACCESS_TOKEN
 const MP_ACCESS_TOKEN = defineSecret("MP_ACCESS_TOKEN");
 
-// Debe coincidir con el preapproval_plan_id de MP_CHECKOUT_URL en src/App.js.
 const PREAPPROVAL_PLAN_ID = "008ace555efd44858a893539c2a43208";
 
 // Resuelve el uid del usuario dueño de una suscripción de MP.
@@ -99,6 +98,49 @@ exports.mpWebhook = onRequest({ secrets: [MP_ACCESS_TOKEN], invoker: "public" },
     console.error("mpWebhook error:", e);
     res.status(500).send("error"); // 5xx hace que MP reintente la notificación
   }
+});
+
+// ─── CREACIÓN DE SUSCRIPCIÓN ──────────────────────────────────────────────────
+// El link público de checkout (mercadopago.cl/subscriptions/checkout?...) IGNORA
+// cualquier external_reference agregado como query param (confirmado: llegó
+// vacío en las 7 suscripciones de prueba de hoy). La única forma confiable de
+// vincular la suscripción a un uid es crearla nosotros vía API, indicando
+// external_reference en el cuerpo del POST.
+exports.crearSuscripcion = onCall({ secrets: [MP_ACCESS_TOKEN] }, async (request) => {
+  const uid = request.auth?.uid;
+  const email = request.auth?.token?.email;
+  if (!uid || !email) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+
+  const backUrl = String(request.data?.backUrl || "https://rentiq.cl/");
+
+  const resp = await fetch("https://api.mercadopago.com/preapproval", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${MP_ACCESS_TOKEN.value()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      preapproval_plan_id: PREAPPROVAL_PLAN_ID,
+      reason: "Rentiq Pro",
+      external_reference: uid,
+      payer_email: email,
+      back_url: backUrl,
+    }),
+  });
+
+  if (!resp.ok) {
+    const detalle = await resp.text().catch(() => "");
+    console.error(`crearSuscripcion: MP respondió ${resp.status}`, detalle);
+    throw new HttpsError("internal", "No se pudo crear la suscripción con Mercado Pago.");
+  }
+
+  const sub = await resp.json();
+  if (!sub.init_point) {
+    console.error("crearSuscripcion: respuesta sin init_point", sub);
+    throw new HttpsError("internal", "Mercado Pago no devolvió el link de pago.");
+  }
+  console.log(`Suscripción ${sub.id} creada para usuario ${uid}`);
+  return { initPoint: sub.init_point };
 });
 
 // ─── VERIFICACIÓN INSTANTÁNEA AL VOLVER DEL CHECKOUT ─────────────────────────
