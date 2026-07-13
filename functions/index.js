@@ -11,8 +11,6 @@ setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 //   firebase functions:secrets:set MP_ACCESS_TOKEN
 const MP_ACCESS_TOKEN = defineSecret("MP_ACCESS_TOKEN");
 
-const PREAPPROVAL_PLAN_ID = "008ace555efd44858a893539c2a43208";
-
 // Resuelve el uid del usuario dueño de una suscripción de MP.
 // 1° intenta external_reference (el cliente lo agrega a la URL del checkout);
 // 2° si no llegó, busca en Firebase Auth por el email del pagador.
@@ -106,6 +104,10 @@ exports.mpWebhook = onRequest({ secrets: [MP_ACCESS_TOKEN], invoker: "public" },
 // vacío en las 7 suscripciones de prueba de hoy). La única forma confiable de
 // vincular la suscripción a un uid es crearla nosotros vía API, indicando
 // external_reference en el cuerpo del POST.
+// No se usa preapproval_plan_id: asociar a un plan exige card_token_id (tarjeta
+// tokenizada de antemano, para checkouts embebidos). Se define el monto y la
+// frecuencia directo en auto_recurring, así MP devuelve un init_point de
+// checkout alojado sin pedir una tarjeta ya tokenizada.
 exports.crearSuscripcion = onCall({ secrets: [MP_ACCESS_TOKEN] }, async (request) => {
   const uid = request.auth?.uid;
   const email = request.auth?.token?.email;
@@ -120,11 +122,16 @@ exports.crearSuscripcion = onCall({ secrets: [MP_ACCESS_TOKEN] }, async (request
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      preapproval_plan_id: PREAPPROVAL_PLAN_ID,
       reason: "Rentiq Pro",
       external_reference: uid,
       payer_email: email,
       back_url: backUrl,
+      auto_recurring: {
+        frequency: 1,
+        frequency_type: "months",
+        transaction_amount: 9990,
+        currency_id: "CLP",
+      },
     }),
   });
 
@@ -170,8 +177,10 @@ exports.verificarSuscripcion = onCall({ secrets: [MP_ACCESS_TOKEN] }, async (req
 // Mercado Pago no siempre entrega la notificación del webhook para preapproval
 // (comportamiento confirmado: ni una sola llegó en meses, incluso con el
 // webhook verificado y funcionando vía "Simular notificación"). Como respaldo,
-// cada 15 min recorremos todas las suscripciones del plan vía la API de
-// búsqueda y aplicamos el mismo estado que aplicaría el webhook.
+// cada 15 min recorremos todas las suscripciones del vendedor vía la API de
+// búsqueda y aplicamos el mismo estado que aplicaría el webhook. No se filtra
+// por preapproval_plan_id: crearSuscripcion ya no asocia a un plan (ver nota
+// en esa función), así que las suscripciones nuevas no tienen ese campo.
 exports.syncSuscripcionesMP = onSchedule(
   { schedule: "every 15 minutes", secrets: [MP_ACCESS_TOKEN] },
   async () => {
@@ -179,7 +188,7 @@ exports.syncSuscripcionesMP = onSchedule(
     let offset = 0;
     while (true) {
       const resp = await fetch(
-        `https://api.mercadopago.com/preapproval/search?preapproval_plan_id=${PREAPPROVAL_PLAN_ID}&limit=${limit}&offset=${offset}`,
+        `https://api.mercadopago.com/preapproval/search?limit=${limit}&offset=${offset}`,
         { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN.value()}` } }
       );
       if (!resp.ok) {
