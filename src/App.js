@@ -1802,6 +1802,12 @@ function Paywall({ usuario, onVolver }) {
       window.open(data.initPoint, "_blank");
       setEsperandoPago(true);
     } catch (e) {
+      if (e.code === "functions/already-exists") {
+        // La función ya reactivó el Pro en Firestore; el onSnapshot cerrará
+        // el paywall solo, en segundos.
+        setErrorPago("Ya tienes una suscripción activa — tu acceso Pro se está actualizando.");
+        return;
+      }
       console.error("Error creando suscripción:", e);
       setErrorPago("No se pudo iniciar el pago. Intenta de nuevo.");
     }

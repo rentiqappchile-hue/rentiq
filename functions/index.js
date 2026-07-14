@@ -28,6 +28,17 @@ async function resolverUid(sub) {
   return null;
 }
 
+// Busca en MP una suscripción autorizada del usuario (por external_reference).
+async function buscarSubAutorizada(uid) {
+  const resp = await fetch(
+    `https://api.mercadopago.com/preapproval/search?external_reference=${encodeURIComponent(uid)}&status=authorized&limit=1`,
+    { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN.value()}` } }
+  );
+  if (!resp.ok) return null;
+  const data = await resp.json().catch(() => null);
+  return data?.results?.[0] || null;
+}
+
 // Aplica el estado de una suscripción MP al usuario correspondiente en Firestore.
 async function activarProSegunSuscripcion(sub) {
   const uid = await resolverUid(sub);
@@ -41,7 +52,27 @@ async function activarProSegunSuscripcion(sub) {
     return;
   }
 
-  const pro = sub.status === "authorized";
+  let pro = sub.status === "authorized";
+
+  if (!pro) {
+    // Una suscripción cancelada no basta para desactivar Pro: el usuario puede
+    // tener OTRA autorizada (canceló y se volvió a suscribir; MP conserva ambas
+    // y el orden en que llegan/se recorren no está garantizado).
+    const activa = await buscarSubAutorizada(uid);
+    if (activa) {
+      sub = activa;
+      pro = true;
+    }
+  }
+
+  if (!pro) {
+    // Tampoco debe pisar un Pro otorgado por código de acceso: ese acceso no
+    // depende de Mercado Pago.
+    const doc = await admin.firestore().doc(`usuarios/${uid}`).get();
+    if (doc.exists && doc.data().pro === true && doc.data().suscripcion?.tipo === "codigo") {
+      return;
+    }
+  }
   await admin.firestore().doc(`usuarios/${uid}`).set(
     {
       pro,
@@ -113,7 +144,34 @@ exports.crearSuscripcion = onCall({ secrets: [MP_ACCESS_TOKEN] }, async (request
   const email = request.auth?.token?.email;
   if (!uid || !email) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
 
-  const backUrl = String(request.data?.backUrl || "https://rentiq.cl/");
+  // Solo se permite volver a dominios propios: sin esto, cualquiera podría
+  // generar un checkout legítimo de Rentiq que redirija a un sitio ajeno
+  // después del pago (phishing).
+  let backUrl = String(request.data?.backUrl || "https://rentiq.cl/");
+  if (!/^https:\/\/(www\.)?rentiq\.cl(\/|$)/.test(backUrl) && !/^http:\/\/localhost:\d+(\/|$)/.test(backUrl)) {
+    backUrl = "https://rentiq.cl/";
+  }
+
+  // Evita el doble cobro: si el usuario ya tiene una suscripción autorizada,
+  // no se crea otra (y de paso se reactiva su Pro por si Firestore quedó
+  // desincronizado). Si tiene una pendiente de pago, se reutiliza su link.
+  const prevResp = await fetch(
+    `https://api.mercadopago.com/preapproval/search?external_reference=${encodeURIComponent(uid)}&limit=50`,
+    { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN.value()}` } }
+  );
+  if (prevResp.ok) {
+    const prev = (await prevResp.json().catch(() => null))?.results || [];
+    const autorizada = prev.find((s) => s.status === "authorized");
+    if (autorizada) {
+      await activarProSegunSuscripcion(autorizada);
+      throw new HttpsError("already-exists", "Ya tienes una suscripción activa de Rentiq Pro.");
+    }
+    const pendiente = prev.find((s) => s.status === "pending" && s.init_point);
+    if (pendiente) {
+      console.log(`Suscripción pendiente ${pendiente.id} reutilizada para usuario ${uid}`);
+      return { initPoint: pendiente.init_point };
+    }
+  }
 
   const resp = await fetch("https://api.mercadopago.com/preapproval", {
     method: "POST",
