@@ -1338,144 +1338,443 @@ function DeclaracionRenta({ deptos }) {
   );
 }
 
-// ─── LANDING PAGE ─────────────────────────────────────────────────────────────
-function Landing({ onEntrar, onPagar }) {
-  const features = [
-    { i:"🔍", t:"Evalúa deptos en venta", d:"Pega el link de una publicación y obtén una nota de 1 a 10 de rentabilidad, al contado y con crédito." },
-    { i:"📊", t:"Rentabilidad real", d:"Flujo neto, Cap Rate y Cash-on-Cash por propiedad, calculados automáticamente." },
-    { i:"🎯", t:"Recomendación inteligente", d:"La app te dice si conviene mantener, subir el arriendo o vender." },
-    { i:"💸", t:"Control de gastos", d:"Dividendo, contribuciones, gastos comunes, seguros y más — todo en un lugar." },
-    { i:"📈", t:"Simulador de escenarios", d:"¿Qué pasa si subo el arriendo 15%? Calcula el impacto en tiempo real." },
-    { i:"🧾", t:"Declaración de renta", d:"Estima cuánto pagas o te devuelven por tus arriendos en abril, con tus datos ya cargados. Régimen óptimo elegido automáticamente." },
-    { i:"🏦", t:"Alerta de deuda", d:"Te avisa cuando el saldo hipotecario lleva más de 6 meses sin actualizar." },
-    { i:"📱", t:"100% móvil", d:"Diseñada para revisar desde el celular en cualquier momento." },
-  ];
+// ─── ÍCONOS (SVG inline, sin librerías) ────────────────────────────────────────
+const Ic = ({ path, size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{path}</svg>
+);
+const IconHome = (p)=><Ic {...p} path={<><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></>}/>;
+const IconTrendUp = (p)=><Ic {...p} path={<><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></>}/>;
+const IconLayers = (p)=><Ic {...p} path={<><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>}/>;
+const IconLock = (p)=><Ic {...p} path={<><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></>}/>;
+const IconFile = (p)=><Ic {...p} path={<><path d="M6 2h9l5 5v15H6z"/><polyline points="15 2 15 7 20 7"/></>}/>;
+const IconGauge = (p)=><Ic {...p} path={<><path d="M4 15a8 8 0 1116 0"/><line x1="12" y1="15" x2="15" y2="10"/></>}/>;
+const IconChart = (p)=><Ic {...p} path={<><line x1="4" y1="20" x2="20" y2="20"/><rect x="6" y="10" width="3" height="8"/><rect x="11" y="6" width="3" height="12"/><rect x="16" y="13" width="3" height="5"/></>}/>;
+const IconCheck = (p)=><Ic {...p} path={<polyline points="20 6 9 17 4 12"/>}/>;
+const IconX = (p)=><Ic {...p} path={<><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></>}/>;
+const IconArrowRight = (p)=><Ic {...p} path={<><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></>}/>;
 
+// Subrayado ondulado bajo una palabra clave de un titular.
+const Squiggle = ({ color = "#c9962f", width = 130 }) => (
+  <svg width={width} height="10" viewBox={`0 0 ${width} 10`} style={{display:"block",marginTop:2}} aria-hidden="true">
+    <path d={`M2 6 Q ${width*0.25} 0 ${width*0.5} 6 T ${width-2} 6`} stroke={color} strokeWidth="3" fill="none" strokeLinecap="round"/>
+  </svg>
+);
+
+// Gráfico de línea simple (sin librerías) para las previsualizaciones.
+const MiniLine = ({ color = "#c9962f", points = "0,40 30,32 60,36 90,20 120,25 150,10 180,15 220,4", h = 40 }) => (
+  <svg viewBox={`0 0 220 ${h+10}`} style={{width:"100%",height:h,display:"block"}} aria-hidden="true">
+    <polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+// Gráfico de dona simple (arcos vía stroke-dasharray).
+function Donut({ segments, size = 80 }) {
+  const r = size*0.375, c = 2*Math.PI*r;
+  let offset = 0;
   return (
-    <div style={{minHeight:"100vh",background:"#080f1a",color:"#f1f5f9",fontFamily:"'DM Sans','SF Pro Display',system-ui,sans-serif",overflowX:"hidden"}}>
-      {/* hero */}
-      <div style={{padding:"48px 24px 40px",textAlign:"center",position:"relative"}}>
-        <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:400,height:300,background:"radial-gradient(ellipse,rgba(59,130,246,0.15) 0%,transparent 70%)",pointerEvents:"none"}}/>
-        <div style={{width:56,height:56,borderRadius:16,background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 20px"}}>🏢</div>
-        <h1 style={{margin:"0 0 12px",fontSize:28,fontWeight:900,letterSpacing:-1,lineHeight:1.2}}>
-          ¿Tus deptos realmente<br/>
-          <span style={{background:"linear-gradient(90deg,#3b82f6,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>te están generando dinero?</span>
-        </h1>
-        <p style={{margin:"0 0 32px",fontSize:15,color:"#64748b",lineHeight:1.6,maxWidth:320,marginLeft:"auto",marginRight:"auto"}}>
-          Rentiq consolida todos tus arriendos, gastos y deudas en una sola vista. Sabrás en segundos qué mantener, qué ajustar y qué vender.
-        </p>
-        <button onClick={onEntrar} style={{
-          width:"100%",maxWidth:320,
-          background:"linear-gradient(135deg,#3b82f6,#6366f1)",
-          border:"none",color:"#fff",fontSize:16,fontWeight:800,
-          padding:"16px",borderRadius:14,cursor:"pointer",
-          boxShadow:"0 8px 32px rgba(59,130,246,0.4)",marginBottom:12,
-        }}>
-          Probar gratis — 1 propiedad
-        </button>
-        <div style={{fontSize:12,color:"#334155"}}>Sin tarjeta. Sin registro. Datos en tu dispositivo.</div>
-      </div>
+    <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} aria-hidden="true">
+      <g transform={`translate(${size/2},${size/2}) rotate(-90)`}>
+        {segments.map((s,i)=>{
+          const dash = (s.pct/100)*c;
+          const el = <circle key={i} r={r} fill="none" stroke={s.color} strokeWidth={size*0.175} strokeDasharray={`${dash} ${c-dash}`} strokeDashoffset={-offset}/>;
+          offset += dash;
+          return el;
+        })}
+      </g>
+    </svg>
+  );
+}
 
-      {/* social proof */}
-      <div style={{margin:"0 24px 32px",background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:12,padding:"14px 16px",display:"flex",gap:12,alignItems:"center"}}>
-        <span style={{fontSize:24}}>💡</span>
+// Panel "Resumen patrimonial" del hero: cifras + gráficos, sin depender de capturas reales.
+function HeroDashboard() {
+  return (
+    <div style={{background:"#fff",borderRadius:20,padding:20,boxShadow:"0 24px 60px -20px rgba(0,0,0,0.35)"}}>
+      <div style={{fontSize:12,fontWeight:800,color:"#10182b",marginBottom:14}}>Resumen patrimonial</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
+        {[{l:"Patrimonio",v:"2.140 UF"},{l:"Flujo /mes",v:"+$320.000",c:"#c9962f"},{l:"Rentabilidad",v:"9,7%",c:"#c9962f"}].map(s=>(
+          <div key={s.l} style={{background:"#f8f9fb",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:9.5,color:"#94a3b8",marginBottom:3}}>{s.l}</div>
+            <div style={{fontSize:13,fontWeight:800,color:s.c||"#10182b"}}>{s.v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1.3fr 1fr",gap:14,alignItems:"center",background:"#f8f9fb",borderRadius:10,padding:"14px 16px",marginBottom:14}}>
         <div>
-          <div style={{fontSize:13,fontWeight:700,color:"#22c55e"}}>Caso real</div>
-          <div style={{fontSize:12,color:"#64748b",marginTop:2}}>Un inversionista con 4 deptos descubrió que uno le generaba flujo negativo de $190.000/mes. Subió el arriendo y redujo vacancia — pasó a +$320.000/mes.</div>
+          <div style={{fontSize:9.5,color:"#94a3b8",marginBottom:4}}>Evolución del patrimonio</div>
+          <MiniLine color="#c9962f" h={44}/>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+          <Donut size={64} segments={[{color:"#c9962f",pct:55},{color:"#10182b",pct:30},{color:"#e5e7eb",pct:15}]}/>
+          <div style={{fontSize:9,color:"#94a3b8",textAlign:"center"}}>Distribución<br/>del patrimonio</div>
         </div>
       </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <div style={{background:"#f8f9fb",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:9.5,color:"#94a3b8",marginBottom:3}}>Proyección flujo mensual</div>
+          <div style={{fontSize:13,fontWeight:800,color:"#10182b"}}>$2.4M → $3.2M</div>
+        </div>
+        <div style={{background:"#f8f9fb",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:9.5,color:"#94a3b8",marginBottom:3}}>Deuda total</div>
+          <div style={{fontSize:13,fontWeight:800,color:"#10182b"}}>480 UF</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      {/* destacado: evaluar compra */}
-      <div style={{margin:"0 24px 32px"}}>
-        <div style={{background:"linear-gradient(135deg,rgba(59,130,246,0.14),rgba(139,92,246,0.14))",border:"1px solid rgba(59,130,246,0.35)",borderRadius:16,padding:"20px",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-18,right:-8,fontSize:96,opacity:0.08,pointerEvents:"none"}}>🎯</div>
-          <div style={{display:"inline-block",background:"rgba(59,130,246,0.2)",color:"#3b82f6",fontSize:10,fontWeight:800,letterSpacing:1,padding:"3px 10px",borderRadius:20,marginBottom:12}}>NUEVO</div>
-          <div style={{fontSize:18,fontWeight:900,marginBottom:8,lineHeight:1.3}}>¿Estás por invertir en una propiedad? Con Rentiq puedes saber si realmente conviene antes de ofertar</div>
-          <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6,marginBottom:16}}>Pega el link de Portal Inmobiliario, ingresa precio y comuna, y obtén una nota de 1 a 10 de rentabilidad — al contado y simulando crédito hipotecario.</div>
-          <div style={{display:"flex",alignItems:"center",gap:14,background:"rgba(0,0,0,0.22)",borderRadius:12,padding:"12px 16px"}}>
-            <div style={{width:54,height:54,borderRadius:"50%",border:"4px solid #22c55e",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              <span style={{fontSize:22,fontWeight:900}}>8</span>
-            </div>
-            <div>
-              <div style={{fontSize:13,fontWeight:800,color:"#22c55e"}}>Muy potente</div>
-              <div style={{fontSize:11,color:"#475569",marginTop:1}}>Rentabilidad neta 5,8% · Precio objetivo 3.200 UF</div>
-            </div>
+// Ilustración de laptop + panel flotante para el banner oscuro.
+function DeviceArt() {
+  return (
+    <div style={{position:"relative",maxWidth:360,margin:"0 auto"}}>
+      <div style={{background:"#1b2540",border:"1px solid rgba(255,255,255,0.1)",borderRadius:14,padding:18}}>
+        <div style={{display:"flex",gap:8,marginBottom:12}}>
+          <div style={{flex:1,background:"rgba(255,255,255,0.06)",borderRadius:8,padding:"9px 11px"}}>
+            <div style={{fontSize:9,color:"#94a3b8"}}>Patrimonio</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>2.140 UF</div>
+          </div>
+          <div style={{flex:1,background:"rgba(255,255,255,0.06)",borderRadius:8,padding:"9px 11px"}}>
+            <div style={{fontSize:9,color:"#94a3b8"}}>Rentabilidad</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#c9962f"}}>9,7%</div>
           </div>
         </div>
+        <MiniLine color="#c9962f" h={40}/>
       </div>
+      <div style={{position:"absolute",bottom:-26,right:-14,width:118,background:"#1b2540",border:"1px solid rgba(255,255,255,0.15)",borderRadius:16,padding:12,boxShadow:"0 20px 40px -10px rgba(0,0,0,0.5)"}}>
+        <div style={{fontSize:8.5,color:"#94a3b8",marginBottom:8}}>Flujo /mes</div>
+        <Donut size={70} segments={[{color:"#c9962f",pct:60},{color:"#fff",pct:25},{color:"rgba(255,255,255,0.2)",pct:15}]}/>
+      </div>
+    </div>
+  );
+}
 
-      {/* features */}
-      <div style={{padding:"0 24px 32px"}}>
-        <div style={{fontSize:11,color:"#475569",textTransform:"uppercase",letterSpacing:1,marginBottom:16,textAlign:"center"}}>Todo lo que incluye</div>
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {features.map(f=>(
-            <div key={f.t} style={{display:"flex",gap:14,alignItems:"flex-start",background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(255,255,255,0.06)"}}>
-              <span style={{fontSize:22,flexShrink:0}}>{f.i}</span>
-              <div>
-                <div style={{fontSize:13,fontWeight:700,color:"#f1f5f9",marginBottom:3}}>{f.t}</div>
-                <div style={{fontSize:12,color:"#475569",lineHeight:1.5}}>{f.d}</div>
-              </div>
+// ─── LANDING PAGE ─────────────────────────────────────────────────────────────
+function Landing({ onEntrar, onPagar }) {
+  const beneficios = [
+    { icon:<IconLayers size={22}/>, t:"Administra todo tu patrimonio en un solo lugar" },
+    { icon:<IconChart size={22}/>, t:"Gestiónalo a través de métricas de inversión" },
+    { icon:<IconGauge size={22}/>, t:"Simula cualquier escenario antes de tomar decisiones" },
+    { icon:<IconFile size={22}/>, t:"Estima el efecto de impuestos y declaración de renta" },
+    { icon:<IconTrendUp size={22}/>, t:"Valida automáticamente si la inversión en una propiedad determinada vale la pena" },
+  ];
+
+  const modulos = [
+    {
+      tag:"Administración patrimonial", icon:<IconLayers size={22}/>,
+      d:"Todos tus arriendos, gastos y deudas en un solo lugar. Rentiq calcula el flujo neto de cada propiedad al instante.",
+      prev:(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {[{l:"Flujo neto /mes",v:"+$320.000"},{l:"Dividendo",v:"$540.000"},{l:"Arriendo",v:"$860.000"}].map(r=>(
+            <div key={r.l} style={{display:"flex",justifyContent:"space-between",background:"#f8f9fb",borderRadius:8,padding:"8px 10px"}}>
+              <span style={{fontSize:11,color:"#64748b"}}>{r.l}</span>
+              <span style={{fontSize:12,fontWeight:800,color:"#10182b"}}>{r.v}</span>
             </div>
           ))}
         </div>
+      ),
+    },
+    {
+      tag:"Simulador de escenarios", icon:<IconGauge size={22}/>,
+      d:"¿Qué pasa si subo el arriendo 15% o cambio el plazo del crédito? Calcula el impacto en tiempo real.",
+      prev:(
+        <div>
+          <MiniLine color="#c9962f" h={40}/>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+            <span style={{fontSize:11,color:"#64748b"}}>Escenario actual</span>
+            <span style={{fontSize:12,fontWeight:800,color:"#c9962f"}}>+18% flujo</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      tag:"Estimación tributaria", icon:<IconFile size={22}/>,
+      d:"Estima cuánto pagas o te devuelven por tus arriendos en abril, con tus propiedades ya cargadas.",
+      prev:(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",background:"#f8f9fb",borderRadius:8,padding:"8px 10px"}}>
+            <span style={{fontSize:11,color:"#64748b"}}>Régimen ganador</span>
+            <span style={{fontSize:12,fontWeight:800,color:"#10182b"}}>General</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",background:"#f8f9fb",borderRadius:8,padding:"8px 10px"}}>
+            <span style={{fontSize:11,color:"#64748b"}}>Resultado</span>
+            <span style={{fontSize:12,fontWeight:800,color:"#c9962f"}}>+$180.000</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      tag:"Validador inteligente", icon:<IconTrendUp size={22}/>,
+      d:"Pega el link de una publicación y obtén una nota de 1 a 10 de rentabilidad antes de ofertar.",
+      prev:(
+        <div style={{display:"flex",alignItems:"center",gap:12,background:"#f8f9fb",borderRadius:8,padding:"10px 12px"}}>
+          <div style={{width:40,height:40,borderRadius:"50%",border:"3px solid #c9962f",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <span style={{fontSize:14,fontWeight:900,color:"#10182b"}}>8</span>
+          </div>
+          <div>
+            <div style={{fontSize:11,fontWeight:800,color:"#10182b"}}>Muy potente</div>
+            <div style={{fontSize:10,color:"#64748b"}}>Cap Rate 6,8%</div>
+          </div>
+        </div>
+      ),
+    },
+  ];
+
+  const comparacion = ["Consolidación automática","Simulación de escenarios","Estimación tributaria","Evaluación de compra (nota 1 a 10)","Alertas de deuda","Recomendación automática"];
+
+  const stats = [
+    { icon:<IconLayers size={20}/>, v:"4", l:"Módulos integrados" },
+    { icon:<IconLock size={20}/>, v:"100%", l:"En tu dispositivo (plan Free)" },
+    { icon:<IconFile size={20}/>, v:"$9.990", l:"Precio del plan Pro, sin letra chica" },
+    { icon:<IconGauge size={20}/>, v:"100%", l:"Adaptado a la normativa tributaria chilena" },
+  ];
+
+  const faq = [
+    { q:"¿Necesito tarjeta para probar Rentiq?", a:"No. El plan Free es gratis, sin tarjeta ni registro con datos de pago, y tus datos quedan guardados en tu propio dispositivo." },
+    { q:"¿Puedo cancelar cuando quiera?", a:"Sí. Rentiq Pro es una suscripción mensual sin permanencia — la cancelas desde Mercado Pago cuando quieras." },
+    { q:"¿Qué pasa si tengo más de una propiedad?", a:"El plan Free permite 1 propiedad. Con Rentiq Pro puedes cargar propiedades ilimitadas y ver el resumen consolidado de tu portafolio." },
+    { q:"¿Mis datos están seguros?", a:"Sí. En el plan Free tus datos viven solo en tu dispositivo. En el plan Pro se guardan en Firebase con reglas de acceso que solo permiten leer y escribir tus propios datos." },
+  ];
+
+  return (
+    <div style={{background:"#fff",color:"#0f172a",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",overflowX:"hidden"}}>
+      <style>{`
+        .rq-navlinks{display:none;gap:32px}
+        @media(min-width:900px){.rq-navlinks{display:flex}}
+        .rq-hero{display:grid;grid-template-columns:1fr;gap:36px;align-items:center}
+        @media(min-width:960px){.rq-hero{grid-template-columns:1.05fr 1fr;gap:48px}}
+        .rq-beneficios{display:grid;grid-template-columns:1fr;gap:24px}
+        @media(min-width:640px){.rq-beneficios{grid-template-columns:repeat(2,1fr)}}
+        @media(min-width:1000px){.rq-beneficios{grid-template-columns:repeat(5,1fr)}}
+        .rq-cards{display:grid;grid-template-columns:1fr;gap:20px}
+        @media(min-width:700px){.rq-cards{grid-template-columns:1fr 1fr}}
+        .rq-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:24px}
+        @media(min-width:700px){.rq-stats{grid-template-columns:repeat(4,1fr)}}
+        .rq-pricing{display:grid;grid-template-columns:1fr;gap:20px;max-width:820px;margin:0 auto}
+        @media(min-width:700px){.rq-pricing{grid-template-columns:1fr 1fr}}
+        .rq-table{width:100%;border-collapse:collapse;font-size:14px}
+        .rq-table td,.rq-table th{padding:12px 14px;border-bottom:1px solid #eef0f3;text-align:left}
+        .rq-btn-navy:hover{background:#1b2540!important}
+        .rq-btn-gold:hover{background:#a87a1f!important}
+        .rq-btn-outline:hover{background:#f8f9fb!important}
+      `}</style>
+
+      {/* NAV */}
+      <div style={{maxWidth:1180,margin:"0 auto",padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"#10182b",display:"flex",alignItems:"center",justifyContent:"center",color:"#c9962f"}}><IconHome size={19}/></div>
+          <span style={{fontSize:19,fontWeight:800,letterSpacing:-0.3}}>Rent<span style={{color:"#c9962f"}}>iq</span></span>
+        </div>
+        <div className="rq-navlinks" style={{alignItems:"center",fontSize:14,fontWeight:600,color:"#334155"}}>
+          <a href="#modulos" style={{color:"inherit",textDecoration:"none"}}>Módulos</a>
+          <a href="#planes" style={{color:"inherit",textDecoration:"none"}}>Planes</a>
+          <a href="#preguntas" style={{color:"inherit",textDecoration:"none"}}>Preguntas</a>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={onEntrar} className="rq-btn-outline" style={{background:"#fff",border:"1px solid #e5e7eb",color:"#0f172a",fontSize:13,fontWeight:700,padding:"9px 16px",borderRadius:10,cursor:"pointer"}}>Iniciar sesión</button>
+          <button onClick={onEntrar} className="rq-btn-navy" style={{background:"#10182b",border:"none",color:"#fff",fontSize:13,fontWeight:700,padding:"10px 18px",borderRadius:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+            Empieza gratis <IconArrowRight size={15}/>
+          </button>
+        </div>
       </div>
 
-      {/* pricing */}
-      <div style={{padding:"0 24px 48px"}}>
-        <div style={{fontSize:11,color:"#475569",textTransform:"uppercase",letterSpacing:1,marginBottom:16,textAlign:"center"}}>Planes</div>
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {/* free */}
-          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:"20px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-              <div>
-                <div style={{fontSize:16,fontWeight:800,color:"#f1f5f9"}}>Free</div>
-                <div style={{fontSize:12,color:"#475569",marginTop:2}}>Para probar</div>
-              </div>
-              <div style={{fontSize:22,fontWeight:900,color:"#f1f5f9"}}>$0</div>
+      {/* HERO */}
+      <div style={{maxWidth:1180,margin:"0 auto",padding:"32px 24px 72px"}}>
+        <div className="rq-hero">
+          <div>
+            <h1 style={{margin:"0 0 8px",fontSize:"clamp(28px,4vw,40px)",fontWeight:900,letterSpacing:-1,lineHeight:1.2}}>
+              Tu patrimonio inmobiliario merece mejores <span style={{color:"#c9962f"}}>decisiones.</span>
+            </h1>
+            <Squiggle color="#c9962f" width={130}/>
+            <p style={{margin:"20px 0 28px",fontSize:16,color:"#64748b",lineHeight:1.7,maxWidth:440}}>
+              Descubre cuánto generan tus propiedades antes de invertir un peso más. Consolida todo tu patrimonio, simula escenarios futuros, estima tu declaración de renta, recibe recomendaciones de accionables e inversión con inteligencia artificial.
+            </p>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <button onClick={onEntrar} className="rq-btn-navy" style={{background:"#10182b",border:"none",color:"#fff",fontSize:15,fontWeight:700,padding:"15px 26px",borderRadius:12,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+                Comenzar gratis <IconArrowRight size={16}/>
+              </button>
+              <a href="#modulos" className="rq-btn-outline" style={{background:"#fff",border:"1px solid #e5e7eb",color:"#0f172a",fontSize:15,fontWeight:700,padding:"15px 26px",borderRadius:12,textDecoration:"none",display:"inline-flex",alignItems:"center"}}>
+                Ver módulos
+              </a>
             </div>
-            {["1 propiedad","Flujo mensual y anual básico","Sin métricas avanzadas (Cap Rate, CaC)","Sin recomendación automática","Sin simulador de escenarios"].map(i=>(
-              <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-                <span style={{fontSize:12,color:i.startsWith("Sin")||i.startsWith("1 prop")?"#475569":"#22c55e"}}>{i.startsWith("Sin")||i.startsWith("1 prop")?"✗":"✓"}</span>
-                <span style={{fontSize:12,color:i.startsWith("Sin")||i.startsWith("1 prop")?"#475569":"#94a3b8"}}>{i}</span>
+            <div style={{fontSize:13,color:"#94a3b8",marginTop:16}}>Sin tarjeta. Sin registro. Datos en tu dispositivo.</div>
+          </div>
+
+          <HeroDashboard/>
+        </div>
+      </div>
+
+      <div style={{maxWidth:1180,margin:"0 auto",padding:"0 24px 88px"}}>
+        {/* MÁS PATRIMONIO, MENOS INCERTIDUMBRE */}
+        <h2 style={{textAlign:"center",margin:"0 0 40px",fontSize:22,fontWeight:800}}>Más patrimonio. Menos incertidumbre.</h2>
+        <div className="rq-beneficios" style={{marginBottom:96}}>
+          {beneficios.map(b=>(
+            <div key={b.t} style={{display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:14}}>
+              <div style={{width:52,height:52,borderRadius:14,background:"#10182b",color:"#c9962f",display:"flex",alignItems:"center",justifyContent:"center"}}>{b.icon}</div>
+              <span style={{fontSize:13.5,color:"#334155",lineHeight:1.5,maxWidth:200}}>{b.t}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* QUÉ PUEDES HACER */}
+        <div id="modulos" style={{textAlign:"center",maxWidth:640,margin:"0 auto 40px"}}>
+          <h2 style={{margin:0,fontSize:"clamp(22px,3vw,28px)",fontWeight:900,letterSpacing:-0.6}}>¿Qué puedes hacer con Rentiq?</h2>
+        </div>
+        <div className="rq-cards" style={{marginBottom:96}}>
+          {modulos.map(m=>(
+            <div key={m.tag} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:16,padding:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+                <div style={{width:38,height:38,borderRadius:10,background:"#10182b",color:"#c9962f",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{m.icon}</div>
+                <div style={{fontSize:15,fontWeight:800}}>{m.tag}</div>
               </div>
-            ))}
-            <button onClick={onEntrar} style={{width:"100%",marginTop:14,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#94a3b8",fontSize:13,fontWeight:700,padding:"12px",borderRadius:10,cursor:"pointer"}}>
-              Empezar gratis
+              <p style={{margin:"0 0 16px",fontSize:13.5,color:"#64748b",lineHeight:1.6}}>{m.d}</p>
+              {m.prev}
+            </div>
+          ))}
+        </div>
+
+        {/* BANNER OSCURO */}
+        <div style={{background:"linear-gradient(135deg,#10182b,#1b2540)",borderRadius:24,padding:"48px 40px",marginBottom:96}}>
+          <div className="rq-hero" style={{gridTemplateColumns:"1fr"}}>
+            <div className="rq-beneficios" style={{gridTemplateColumns:"1fr",display:"grid"}}>
+              <div style={{textAlign:"left"}}>
+                <h2 style={{margin:"0 0 14px",fontSize:"clamp(22px,3vw,30px)",fontWeight:900,color:"#fff",letterSpacing:-0.6,lineHeight:1.25}}>
+                  Una sola plataforma.<br/>Todo tu patrimonio.
+                </h2>
+                <p style={{margin:"0 0 24px",fontSize:14.5,color:"#94a3b8",lineHeight:1.7,maxWidth:420}}>
+                  Visualiza, analiza y proyecta todo tu patrimonio inmobiliario en un solo lugar. Información clara para decisiones más rápidas.
+                </p>
+                <a href="#modulos" className="rq-btn-gold" style={{background:"#c9962f",color:"#10182b",fontSize:14,fontWeight:700,padding:"13px 24px",borderRadius:10,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:8}}>
+                  Ver cómo funciona <IconArrowRight size={15}/>
+                </a>
+              </div>
+            </div>
+          </div>
+          <div style={{marginTop:40}}><DeviceArt/></div>
+        </div>
+
+        {/* ESTADÍSTICAS (honestas, sin usuarios inventados) */}
+        <h2 style={{textAlign:"center",margin:"0 0 40px",fontSize:22,fontWeight:800}}>Rentiq en números</h2>
+        <div className="rq-stats" style={{marginBottom:96}}>
+          {stats.map(s=>(
+            <div key={s.l} style={{textAlign:"center"}}>
+              <div style={{width:44,height:44,borderRadius:12,background:"#10182b",color:"#c9962f",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px"}}>{s.icon}</div>
+              <div style={{fontSize:26,fontWeight:900,color:"#10182b"}}>{s.v}</div>
+              <div style={{fontSize:12.5,color:"#64748b",marginTop:4}}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* EXCEL VS RENTIQ */}
+        <div style={{maxWidth:640,margin:"0 auto 96px"}}>
+          <h2 style={{textAlign:"center",margin:"0 0 24px",fontSize:22,fontWeight:800}}>Excel vs. Rentiq</h2>
+          <table className="rq-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th style={{textAlign:"center",color:"#94a3b8",fontWeight:700}}>Excel</th>
+                <th style={{textAlign:"center",color:"#10182b",fontWeight:800}}>Rentiq</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparacion.map(f=>(
+                <tr key={f}>
+                  <td style={{color:"#334155"}}>{f}</td>
+                  <td style={{textAlign:"center",color:"#cbd5e1"}}><IconX size={15}/></td>
+                  <td style={{textAlign:"center",color:"#c9962f"}}><IconCheck size={16}/></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* PRICING */}
+        <div id="planes" style={{textAlign:"center",maxWidth:640,margin:"0 auto 40px"}}>
+          <h2 style={{margin:0,fontSize:"clamp(22px,3vw,28px)",fontWeight:900,letterSpacing:-0.6}}>Elige el plan que se adapta a ti</h2>
+        </div>
+        <div className="rq-pricing">
+          <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:20,padding:28}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:17,fontWeight:800}}>Gratuita</div>
+                <div style={{fontSize:13,color:"#94a3b8",marginTop:2}}>Para probar</div>
+              </div>
+              <div style={{fontSize:26,fontWeight:900}}>$0</div>
+            </div>
+            {["1 propiedad","Flujo mensual y anual básico","Sin métricas avanzadas (Cap Rate, CaC)","Sin recomendación automática","Sin simulador de escenarios"].map(i=>{
+              const off = i.startsWith("Sin")||i.startsWith("1 prop");
+              return (
+                <div key={i} style={{display:"flex",gap:9,alignItems:"center",marginBottom:9}}>
+                  <span style={{color:off?"#cbd5e1":"#c9962f",flexShrink:0}}>{off?<IconX size={13}/>:<IconCheck size={15}/>}</span>
+                  <span style={{fontSize:13.5,color:off?"#94a3b8":"#334155"}}>{i}</span>
+                </div>
+              );
+            })}
+            <button onClick={onEntrar} className="rq-btn-outline" style={{width:"100%",marginTop:16,background:"#fff",border:"1px solid #e5e7eb",color:"#0f172a",fontSize:14,fontWeight:700,padding:"13px",borderRadius:10,cursor:"pointer"}}>
+              Comenzar gratis
             </button>
           </div>
 
-          {/* pro */}
-          <div style={{background:"linear-gradient(135deg,rgba(59,130,246,0.12),rgba(99,102,241,0.12))",border:"2px solid rgba(59,130,246,0.4)",borderRadius:16,padding:"20px",position:"relative"}}>
-            <div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:"linear-gradient(90deg,#3b82f6,#6366f1)",color:"#fff",fontSize:10,fontWeight:800,letterSpacing:1,padding:"3px 12px",borderRadius:20}}>MÁS POPULAR</div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+          <div style={{background:"#10182b",borderRadius:20,padding:28,position:"relative"}}>
+            <div style={{position:"absolute",top:-13,left:"50%",transform:"translateX(-50%)",background:"#c9962f",color:"#10182b",fontSize:10,fontWeight:800,letterSpacing:0.6,padding:"4px 14px",borderRadius:999}}>MEJOR VALOR</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
               <div>
-                <div style={{fontSize:16,fontWeight:800,color:"#f1f5f9"}}>Pro</div>
-                <div style={{fontSize:12,color:"#475569",marginTop:2}}>Para inversionistas activos</div>
+                <div style={{fontSize:17,fontWeight:800,color:"#fff"}}>Pro</div>
+                <div style={{fontSize:13,color:"#94a3b8",marginTop:2}}>Para inversionistas activos</div>
               </div>
               <div style={{textAlign:"right"}}>
-                <div style={{fontSize:22,fontWeight:900,color:"#3b82f6"}}>$9.990</div>
-                <div style={{fontSize:10,color:"#475569"}}>CLP / mes</div>
+                <div style={{fontSize:26,fontWeight:900,color:"#c9962f"}}>$9.990</div>
+                <div style={{fontSize:11,color:"#94a3b8"}}>CLP / mes</div>
               </div>
             </div>
-            {["Propiedades ilimitadas","Simulador de escenarios","Declaración de renta automática","Alertas de deuda","Historial de arriendos","Soporte prioritario"].map(i=>(
-              <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-                <span style={{fontSize:12,color:"#3b82f6"}}>✓</span>
-                <span style={{fontSize:12,color:"#94a3b8"}}>{i}</span>
+            {["Propiedades ilimitadas","Simulador de escenarios","Declaración de renta automática","Recomendación con inteligencia artificial para la gestión e inversión de propiedades","Alertas de deuda","Historial de arriendos","Soporte prioritario"].map(i=>(
+              <div key={i} style={{display:"flex",gap:9,alignItems:"center",marginBottom:9}}>
+                <span style={{color:"#c9962f",flexShrink:0}}><IconCheck size={15}/></span>
+                <span style={{fontSize:13.5,color:"#e2e8f0"}}>{i}</span>
               </div>
             ))}
-            <button onClick={onPagar} style={{
-              width:"100%",marginTop:14,
-              background:"linear-gradient(135deg,#3b82f6,#6366f1)",
-              border:"none",color:"#fff",fontSize:14,fontWeight:800,
-              padding:"14px",borderRadius:10,cursor:"pointer",
-              boxShadow:"0 4px 20px rgba(59,130,246,0.35)",
-            }}>
-              Activar Pro — $9.990/mes
+            <button onClick={onPagar} className="rq-btn-gold" style={{width:"100%",marginTop:16,background:"#c9962f",border:"none",color:"#10182b",fontSize:14,fontWeight:700,padding:"14px",borderRadius:10,cursor:"pointer"}}>
+              Comenzar ahora — $9.990/mes
             </button>
           </div>
         </div>
-        <div style={{fontSize:11,color:"#334155",textAlign:"center",marginTop:16}}>
-          Pago seguro vía Mercado Pago · Cancela cuando quieras
+        <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",marginTop:20}}>Pago seguro vía Mercado Pago · Cancela cuando quieras</div>
+
+        {/* FAQ */}
+        <div id="preguntas" style={{maxWidth:720,margin:"96px auto 0"}}>
+          <h2 style={{textAlign:"center",margin:"0 0 36px",fontSize:"clamp(22px,3vw,28px)",fontWeight:900,letterSpacing:-0.6}}>Lo que más nos preguntan</h2>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            {faq.map(f=>(
+              <div key={f.q} style={{background:"#f8f9fb",border:"1px solid #eef0f3",borderRadius:14,padding:"18px 20px"}}>
+                <div style={{fontSize:14.5,fontWeight:800,marginBottom:6}}>{f.q}</div>
+                <div style={{fontSize:13.5,color:"#64748b",lineHeight:1.7}}>{f.a}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA FINAL */}
+        <div style={{textAlign:"center",margin:"96px 0 40px",padding:"56px 24px",background:"linear-gradient(135deg,#10182b,#1b2540)",borderRadius:24}}>
+          <h2 style={{margin:"0 0 14px",fontSize:"clamp(24px,3.4vw,30px)",fontWeight:900,color:"#fff",letterSpacing:-0.6}}>
+            ¿Listo para tomar mejores decisiones patrimoniales?
+          </h2>
+          <p style={{margin:"0 0 28px",fontSize:15,color:"#94a3b8"}}>Empieza gratis con tu primera propiedad, sin tarjeta.</p>
+          <button onClick={onEntrar} className="rq-btn-gold" style={{background:"#c9962f",border:"none",color:"#10182b",fontSize:15,fontWeight:700,padding:"16px 32px",borderRadius:12,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8}}>
+            Comenzar gratis <IconArrowRight size={16}/>
+          </button>
+        </div>
+
+        {/* FOOTER */}
+        <div style={{background:"#10182b",borderRadius:20,padding:"32px 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:26,height:26,borderRadius:7,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#10182b"}}><IconHome size={14}/></div>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Rent<span style={{color:"#c9962f"}}>iq</span></span>
+          </div>
+          <div style={{display:"flex",gap:24,fontSize:13,color:"#94a3b8"}}>
+            <a href="#modulos" style={{color:"inherit",textDecoration:"none"}}>Módulos</a>
+            <a href="#planes" style={{color:"inherit",textDecoration:"none"}}>Planes</a>
+            <a href="#preguntas" style={{color:"inherit",textDecoration:"none"}}>Preguntas</a>
+          </div>
+          <a href="mailto:rentiq.app.chile@gmail.com" style={{fontSize:13,color:"#c9962f",textDecoration:"none"}}>rentiq.app.chile@gmail.com</a>
+          <div style={{fontSize:12,color:"#64748b"}}>Hecho en Chile · © {new Date().getFullYear()} Rentiq</div>
         </div>
       </div>
     </div>
