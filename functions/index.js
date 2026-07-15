@@ -16,6 +16,12 @@ const MP_ACCESS_TOKEN = defineSecret("MP_ACCESS_TOKEN");
 //   firebase functions:secrets:set ANTHROPIC_API_KEY
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 
+// Contraseña de aplicación de Gmail para rentiq.app.chile@gmail.com (requiere
+// verificación en 2 pasos en esa cuenta de Google). Configurar con:
+//   firebase functions:secrets:set GMAIL_APP_PASSWORD
+const GMAIL_APP_PASSWORD = defineSecret("GMAIL_APP_PASSWORD");
+const EMAIL_REMITENTE = "rentiq.app.chile@gmail.com";
+
 // Resuelve el uid del usuario dueño de una suscripción de MP.
 // 1° intenta external_reference (el cliente lo agrega a la URL del checkout);
 // 2° si no llegó, busca en Firebase Auth por el email del pagador.
@@ -268,6 +274,120 @@ exports.syncSuscripcionesMP = onSchedule(
     }
   }
 );
+
+// ─── RESUMEN MENSUAL POR CORREO (retención) ───────────────────────────────────
+// El 1° de cada mes se envía a cada usuario con propiedades un resumen de su
+// portafolio: flujo, mejor/peor propiedad y recordatorios (deuda desactualizada;
+// en marzo-abril, la declaración de renta). Es la razón recurrente para volver
+// a abrir la app. Opt-out: campo emails=false en usuarios/{uid} (se setea a
+// mano si alguien responde BAJA).
+const nodemailer = require("nodemailer");
+
+const fmtCLP = (n) => "$" + new Intl.NumberFormat("es-CL", { maximumFractionDigits: 0 }).format(Math.round(n));
+
+// Arma el resumen de un usuario; null si no corresponde enviarle nada.
+async function construirResumenMensual(uid) {
+  const db = admin.firestore();
+  const userDoc = await db.doc(`usuarios/${uid}`).get();
+  if (userDoc.exists && userDoc.data().emails === false) return null;
+
+  const user = await admin.auth().getUser(uid).catch(() => null);
+  if (!user?.email) return null;
+
+  const deptosSnap = await db.collection(`usuarios/${uid}/deptos`).get();
+  if (deptosSnap.empty) return null;
+
+  const props = deptosSnap.docs.map((doc) => {
+    const d = doc.data();
+    const ingresoAnual = (d.arriendoActual || 0) * (d.mesesArriendados || 0);
+    const gastosAnuales = ((d.dividendoMensual || 0) + (d.contribuciones || 0) + (d.gastosComunes || 0) + (d.seguros || 0) + (d.otrosGastos || 0)) * 12;
+    const mesesDeuda = d.fechaDeuda ? Math.floor((Date.now() - new Date(d.fechaDeuda).getTime()) / (30.44 * 24 * 3600 * 1000)) : null;
+    return {
+      nombre: d.nombre || "Propiedad",
+      flujoMensual: (ingresoAnual - gastosAnuales) / 12,
+      deudaStale: (d.deudaHipotecaria || 0) > 0 && mesesDeuda !== null && mesesDeuda > 6,
+    };
+  });
+
+  const flujoTotal = props.reduce((s, p) => s + p.flujoMensual, 0);
+  const peor = [...props].sort((a, b) => a.flujoMensual - b.flujoMensual)[0];
+  const mejor = [...props].sort((a, b) => b.flujoMensual - a.flujoMensual)[0];
+  const staleCount = props.filter((p) => p.deudaStale).length;
+
+  const ahora = new Date();
+  const mesChile = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Santiago" })).getMonth() + 1;
+  const nombreMes = new Intl.DateTimeFormat("es-CL", { month: "long", timeZone: "America/Santiago" }).format(ahora);
+
+  const filas = [];
+  filas.push(`<tr><td style="padding:8px 0;color:#64748b">Flujo neto estimado del portafolio</td><td style="padding:8px 0;text-align:right;font-weight:700;color:${flujoTotal >= 0 ? "#16a34a" : "#dc2626"}">${flujoTotal >= 0 ? "+" : ""}${fmtCLP(flujoTotal)}/mes</td></tr>`);
+  if (props.length > 1) {
+    filas.push(`<tr><td style="padding:8px 0;color:#64748b">Mejor propiedad</td><td style="padding:8px 0;text-align:right;font-weight:700">${mejor.nombre} (${fmtCLP(mejor.flujoMensual)}/mes)</td></tr>`);
+    filas.push(`<tr><td style="padding:8px 0;color:#64748b">Menor desempeño</td><td style="padding:8px 0;text-align:right;font-weight:700">${peor.nombre} (${fmtCLP(peor.flujoMensual)}/mes)</td></tr>`);
+  }
+
+  const avisos = [];
+  if (staleCount > 0) avisos.push(`⏰ Tienes ${staleCount === 1 ? "1 propiedad" : staleCount + " propiedades"} con el saldo hipotecario sin actualizar hace más de 6 meses. Actualízalo para que tu equity y LTV sean reales.`);
+  if (mesChile === 3 || mesChile === 4) avisos.push(`🧾 Se acerca la Operación Renta (plazo: 30 de abril). Rentiq ya tiene tu declaración pre-calculada con tus arriendos en la pestaña Renta.`);
+
+  const html = `
+  <div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto;color:#0f172a;padding:8px 16px">
+    <div style="background:#10182b;border-radius:14px;padding:20px 24px;margin-bottom:20px">
+      <div style="font-size:18px;font-weight:800;color:#fff">Rent<span style="color:#c9962f">iq</span></div>
+      <div style="font-size:13px;color:#94a3b8;margin-top:4px">Tu resumen de ${nombreMes}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px">${filas.join("")}</table>
+    ${avisos.map((a) => `<div style="background:#fdf6e7;border:1px solid #ecd9a8;border-radius:10px;padding:12px 14px;font-size:13px;margin-top:14px;line-height:1.5">${a}</div>`).join("")}
+    <a href="https://rentiq.cl" style="display:block;text-align:center;background:#10182b;color:#fff;font-size:14px;font-weight:700;padding:13px;border-radius:10px;text-decoration:none;margin-top:22px">Ver mi portafolio en Rentiq</a>
+    <p style="font-size:11px;color:#94a3b8;margin-top:24px;line-height:1.5">Recibes este resumen mensual por tener propiedades en Rentiq. Cifras estimadas a partir de tus datos; no constituyen asesoría financiera. Para dejar de recibirlo, responde este correo con la palabra BAJA.</p>
+  </div>`;
+
+  return {
+    to: user.email,
+    subject: `Tu portafolio en ${nombreMes}: ${flujoTotal >= 0 ? "+" : ""}${fmtCLP(flujoTotal)}/mes`,
+    html,
+  };
+}
+
+function transporteGmail() {
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: EMAIL_REMITENTE, pass: GMAIL_APP_PASSWORD.value() },
+  });
+}
+
+exports.emailResumenMensual = onSchedule(
+  { schedule: "0 9 1 * *", timeZone: "America/Santiago", secrets: [GMAIL_APP_PASSWORD], timeoutSeconds: 540 },
+  async () => {
+    const db = admin.firestore();
+    // listDocuments incluye docs "fantasma" (usuarios Free sin doc propio pero
+    // con subcolección deptos), que .get() sobre la colección omitiría.
+    const refs = await db.collection("usuarios").listDocuments();
+    const transporte = transporteGmail();
+    let enviados = 0;
+    for (const ref of refs) {
+      try {
+        const resumen = await construirResumenMensual(ref.id);
+        if (!resumen) continue;
+        await transporte.sendMail({ from: `Rentiq <${EMAIL_REMITENTE}>`, ...resumen });
+        enviados++;
+      } catch (e) {
+        console.error(`emailResumenMensual: fallo con ${ref.id}:`, e.message);
+      }
+    }
+    console.log(`emailResumenMensual: ${enviados} correos enviados de ${refs.length} usuarios.`);
+  }
+);
+
+// Envía el resumen solo al usuario que llama. Sirve para probar el correo sin
+// esperar al día 1, y como futura función "envíame mi resumen ahora".
+exports.probarEmailMensual = onCall({ secrets: [GMAIL_APP_PASSWORD] }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+  const resumen = await construirResumenMensual(uid);
+  if (!resumen) throw new HttpsError("failed-precondition", "No hay propiedades para armar el resumen.");
+  await transporteGmail().sendMail({ from: `Rentiq <${EMAIL_REMITENTE}>`, ...resumen });
+  return { ok: true, enviadoA: resumen.to };
+});
 
 // ─── ANÁLISIS DEL PORTAFOLIO CON IA (Pro) ─────────────────────────────────────
 // Genera recomendaciones de gestión e inversión con Claude a partir de las

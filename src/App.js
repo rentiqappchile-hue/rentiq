@@ -74,6 +74,7 @@ function AuthScreen({ onLogin, onVolver }) {
       } else {
         await signInWithEmailAndPassword(auth, email, pass);
       }
+      track(modo === "registro" ? "sign_up" : "login", { method: "password" });
       onLogin();
     } catch (e) {
       if (e.code === "auth/email-already-in-use") setError("Este email ya está registrado.");
@@ -152,6 +153,9 @@ const fmtM = (n) => {
   return s + "$" + fmt(abs);
 };
 const parseCLP = (s) => parseInt(String(s).replace(/\D/g, "")) || 0;
+// Evento de Google Analytics (gtag cargado en public/index.html). Nunca rompe
+// la app si GA está bloqueado por el navegador.
+const track = (evento, params) => { try { if (window.gtag) window.gtag("event", evento, params || {}); } catch (_) {} };
 const mesesDesde = (fecha) => {
   if (!fecha) return null;
   const d = new Date(fecha), now = new Date();
@@ -446,12 +450,21 @@ function FormularioDepto({ inicial, onGuardar, onCancelar, titulo }) {
           }}>✓ Guardar propiedad</button>
         )}
       </div>
+
+      {/* atajo: con nombre y valor ya se puede calcular lo esencial */}
+      {step > 0 && step < steps.length - 1 && f.nombre.trim() && f.valorMercado > 0 && (
+        <div style={{position:"fixed",bottom:66,left:0,right:0,textAlign:"center",padding:"6px 16px"}}>
+          <span onClick={guardar} style={{fontSize:12,color:"#22c55e",cursor:"pointer",fontWeight:700,background:"rgba(8,15,26,0.9)",padding:"6px 14px",borderRadius:20,border:"1px solid rgba(34,197,94,0.3)"}}>
+            ✓ Guardar ahora y completar el resto después
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── VISTA LISTA ──────────────────────────────────────────────────────────────
-function VistaLista({ deptos, filtro, setFiltro, onSelect, onNuevo, bloqueado }) {
+function VistaLista({ deptos, filtro, setFiltro, onSelect, onNuevo, bloqueado, onDemo }) {
   const all = deptos.map(calc);
   const totalFlujo = all.reduce((s,d)=>s+d.flujoNeto,0);
   const totalArr = all.reduce((s,d)=>s+d.arriendoActual,0);
@@ -557,6 +570,16 @@ function VistaLista({ deptos, filtro, setFiltro, onSelect, onNuevo, bloqueado })
         }}>
           {bloqueado?"🔒 Agregar propiedad — requiere Pro":"+ Agregar propiedad"}
         </button>
+
+        {/* sin propiedades aún: ofrecer un ejemplo para ver el valor sin digitar nada */}
+        {deptos.length === 0 && onDemo && (
+          <button onClick={onDemo} style={{
+            background:"none",border:"none",color:"#64748b",fontSize:12,fontWeight:600,
+            cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:3,
+          }}>
+            👀 ¿No tienes los datos a mano? Ver con una propiedad de ejemplo
+          </button>
+        )}
       </div>
     </div>
   );
@@ -851,6 +874,7 @@ function AnalisisIA({ acceso, onPagar }) {
     setError(""); setCargando(true);
     try {
       const { data } = await httpsCallable(functions, "analisisIA")({});
+      track("analisis_ia_generado", { cached: data.cached });
       setAnalisis(data.analisis);
     } catch (e) {
       if (e.code === "functions/failed-precondition") setError("Agrega al menos una propiedad para generar el análisis.");
@@ -1020,6 +1044,7 @@ function EvaluarCompra() {
     const s = parseInt(String(m2).replace(/\D/g,"")) || 0;
     if (!p || !s) { setErr("Ingresa el precio en UF y la superficie en m²."); setRes(null); return; }
     setErr("");
+    track("evaluacion_realizada", { comuna });
     setRes(evaluarCompra(p, s, comuna));
   };
 
@@ -1508,7 +1533,7 @@ function DeviceArt() {
 }
 
 // ─── LANDING PAGE ─────────────────────────────────────────────────────────────
-function Landing({ onEntrar, onPagar }) {
+function Landing({ onEntrar, onPagar, onEvaluar }) {
   const beneficios = [
     { icon:<IconLayers size={22}/>, t:"Administra todo tu patrimonio en un solo lugar" },
     { icon:<IconChart size={22}/>, t:"Gestiónalo a través de métricas de inversión" },
@@ -1565,14 +1590,19 @@ function Landing({ onEntrar, onPagar }) {
       tag:"Validador inteligente", icon:<IconTrendUp size={22}/>,
       d:"Pega el link de una publicación y obtén una nota de 1 a 10 de rentabilidad antes de ofertar.",
       prev:(
-        <div style={{display:"flex",alignItems:"center",gap:12,background:"#f8f9fb",borderRadius:8,padding:"10px 12px"}}>
-          <div style={{width:40,height:40,borderRadius:"50%",border:"3px solid #c9962f",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            <span style={{fontSize:14,fontWeight:900,color:"#10182b"}}>8</span>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:12,background:"#f8f9fb",borderRadius:8,padding:"10px 12px",marginBottom:12}}>
+            <div style={{width:40,height:40,borderRadius:"50%",border:"3px solid #c9962f",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <span style={{fontSize:14,fontWeight:900,color:"#10182b"}}>8</span>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:800,color:"#10182b"}}>Muy potente</div>
+              <div style={{fontSize:10,color:"#64748b"}}>Cap Rate 6,8%</div>
+            </div>
           </div>
-          <div>
-            <div style={{fontSize:11,fontWeight:800,color:"#10182b"}}>Muy potente</div>
-            <div style={{fontSize:10,color:"#64748b"}}>Cap Rate 6,8%</div>
-          </div>
+          <button onClick={onEvaluar} className="rq-btn-gold" style={{width:"100%",background:"#c9962f",border:"none",color:"#10182b",fontSize:13,fontWeight:700,padding:"11px",borderRadius:9,cursor:"pointer"}}>
+            Pruébalo ahora, sin cuenta
+          </button>
         </div>
       ),
     },
@@ -1582,16 +1612,16 @@ function Landing({ onEntrar, onPagar }) {
 
   const stats = [
     { icon:<IconLayers size={20}/>, v:"4", l:"Módulos integrados" },
-    { icon:<IconLock size={20}/>, v:"100%", l:"En tu dispositivo (plan Free)" },
+    { icon:<IconLock size={20}/>, v:"100%", l:"Privado: solo tú puedes ver tus datos" },
     { icon:<IconFile size={20}/>, v:"$9.990", l:"Precio del plan Pro, sin letra chica" },
     { icon:<IconGauge size={20}/>, v:"100%", l:"Adaptado a la normativa tributaria chilena" },
   ];
 
   const faq = [
-    { q:"¿Necesito tarjeta para probar Rentiq?", a:"No. El plan Free es gratis, sin tarjeta ni registro con datos de pago, y tus datos quedan guardados en tu propio dispositivo." },
+    { q:"¿Necesito tarjeta para probar Rentiq?", a:"No. El plan Free es gratis y sin tarjeta. Incluso puedes evaluar un departamento en venta sin crear cuenta — la cuenta solo se necesita para guardar tus propiedades." },
     { q:"¿Puedo cancelar cuando quiera?", a:"Sí. Rentiq Pro es una suscripción mensual sin permanencia — la cancelas desde Mercado Pago cuando quieras." },
     { q:"¿Qué pasa si tengo más de una propiedad?", a:"El plan Free permite 1 propiedad. Con Rentiq Pro puedes cargar propiedades ilimitadas y ver el resumen consolidado de tu portafolio." },
-    { q:"¿Mis datos están seguros?", a:"Sí. En el plan Free tus datos viven solo en tu dispositivo. En el plan Pro se guardan en Firebase con reglas de acceso que solo permiten leer y escribir tus propios datos." },
+    { q:"¿Mis datos están seguros?", a:"Sí. Tus datos se guardan en tu cuenta personal sobre Firebase (infraestructura de Google), con reglas de acceso que solo permiten que tu propia cuenta los lea y escriba. Nadie más puede verlos." },
   ];
 
   return (
@@ -1651,11 +1681,11 @@ function Landing({ onEntrar, onPagar }) {
               <button onClick={onEntrar} className="rq-btn-navy" style={{background:"#10182b",border:"none",color:"#fff",fontSize:15,fontWeight:700,padding:"15px 26px",borderRadius:12,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
                 Comenzar gratis <IconArrowRight size={16}/>
               </button>
-              <a href="#modulos" className="rq-btn-outline" style={{background:"#fff",border:"1px solid #e5e7eb",color:"#0f172a",fontSize:15,fontWeight:700,padding:"15px 26px",borderRadius:12,textDecoration:"none",display:"inline-flex",alignItems:"center"}}>
-                Ver módulos
-              </a>
+              <button onClick={onEvaluar} className="rq-btn-outline" style={{background:"#fff",border:"1px solid #c9962f",color:"#a87a1f",fontSize:15,fontWeight:700,padding:"15px 26px",borderRadius:12,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8}}>
+                Evaluar un depto gratis <IconArrowRight size={16}/>
+              </button>
             </div>
-            <div style={{fontSize:13,color:"#94a3b8",marginTop:16}}>Sin tarjeta. Sin registro. Datos en tu dispositivo.</div>
+            <div style={{fontSize:13,color:"#94a3b8",marginTop:16}}>Gratis, sin tarjeta. Evalúa tu primer depto sin crear cuenta.</div>
           </div>
 
           <HeroDashboard/>
@@ -1759,7 +1789,7 @@ function Landing({ onEntrar, onPagar }) {
               </div>
               <div style={{fontSize:26,fontWeight:900}}>$0</div>
             </div>
-            {["1 propiedad","Flujo mensual y anual básico","Sin métricas avanzadas (Cap Rate, CaC)","Sin recomendación automática","Sin simulador de escenarios"].map(i=>{
+            {["1 propiedad","Flujo mensual y anual básico","Evaluador de compra (nota 1 a 10)","Sin métricas avanzadas (Cap Rate, CaC)","Sin recomendación automática","Sin simulador de escenarios"].map(i=>{
               const off = i.startsWith("Sin")||i.startsWith("1 prop");
               return (
                 <div key={i} style={{display:"flex",gap:9,alignItems:"center",marginBottom:9}}>
@@ -1859,6 +1889,7 @@ function Paywall({ usuario, onVolver }) {
     try {
       const backUrl = `${window.location.origin}${window.location.pathname}`;
       const { data } = await httpsCallable(functions, "crearSuscripcion")({ backUrl });
+      track("begin_checkout", { currency: "CLP", value: 9990 });
       window.open(data.initPoint, "_blank");
       setEsperandoPago(true);
     } catch (e) {
@@ -1940,7 +1971,7 @@ function Paywall({ usuario, onVolver }) {
         </div>
 
         <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(255,255,255,0.06)"}}>
-          {["Cancela cuando quieras, sin permanencia","Datos guardados en tu dispositivo","Soporte por WhatsApp en 24h"].map(i=>(
+          {["Cancela cuando quieras, sin permanencia","Tus datos son privados: solo tu cuenta los ve","Soporte por correo en 24h"].map(i=>(
             <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
               <span style={{fontSize:11,color:"#22c55e"}}>✓</span>
               <span style={{fontSize:12,color:"#475569"}}>{i}</span>
@@ -2006,15 +2037,18 @@ export default function App() {
   // Si Pro se activa (pago confirmado o código canjeado) mientras el usuario
   // está en el paywall, llevarlo directo a la app.
   useEffect(() => {
-    if (acceso) setPantalla(p => p === "paywall" ? "app" : p);
-  }, [acceso]);
+    if (acceso && pantalla === "paywall") {
+      track("purchase", { currency: "CLP", value: 9990 });
+      setPantalla("app");
+    }
+  }, [acceso, pantalla]);
 
   const irALista = () => { setVista("lista"); setDeptoSel(null); };
 
-  const entrarGratis = () => setPantalla("auth");
+  const entrarGratis = () => { track("cta_comenzar_gratis"); setPantalla("auth"); };
 
   // El paywall necesita una cuenta para asociar la suscripción.
-  const irAPaywall = () => setPantalla(usuario ? "paywall" : "auth");
+  const irAPaywall = () => { track("paywall_visto"); setPantalla(usuario ? "paywall" : "auth"); };
 
   const cerrarSesion = async () => {
     await signOut(auth);
@@ -2026,10 +2060,27 @@ export default function App() {
   const guardarNuevo = async (d) => {
     const nuevo = [...deptos, d];
     setDeptos(nuevo);
+    track("propiedad_guardada", { total: nuevo.length });
     if (usuario && !(await guardarDeptooDB(usuario.uid, d))) {
       alert("No se pudo guardar la propiedad en la nube. Revisa tu conexión e intenta de nuevo.");
     }
     irALista();
+  };
+
+  // Propiedad de ejemplo para ver el valor de la app sin digitar 12 campos.
+  // Editable y eliminable como cualquier otra; usa el cupo del plan Free.
+  const cargarDemo = () => {
+    track("demo_cargado");
+    guardarNuevo({
+      nombre: "Depto ejemplo · Ñuñoa", tipo: "2D/1B", m2: 55, comuna: "Ñuñoa",
+      valorMercado: 105_000_000, deudaHipotecaria: 60_000_000,
+      fechaDeuda: new Date().toISOString().slice(0, 10),
+      dividendoMensual: 380_000, contribuciones: 35_000, gastosComunes: 0,
+      seguros: 15_000, otrosGastos: 20_000,
+      arriendoActual: 520_000, arriendoMercado: 560_000,
+      mesesVacancia: 1, mesesArriendados: 11, plusvalia: "",
+      id: Date.now(), historial: Array(12).fill(520_000),
+    });
   };
 
   const guardarEdicion = async (d) => {
@@ -2057,7 +2108,21 @@ export default function App() {
     </div>
   );
 
-  if (pantalla === "landing") return <Landing onEntrar={entrarGratis} onPagar={irAPaywall}/>;
+  if (pantalla === "landing") return <Landing onEntrar={entrarGratis} onPagar={irAPaywall} onEvaluar={()=>{track("cta_evaluar_gratis");setPantalla("evaluar");}}/>;
+  if (pantalla === "evaluar") return (
+    <div style={{minHeight:"100vh",background:"#080f1a",color:"#f1f5f9",fontFamily:"'DM Sans','SF Pro Display',system-ui,sans-serif"}}>
+      <div style={{position:"sticky",top:0,zIndex:100,background:"rgba(8,15,26,0.97)",backdropFilter:"blur(20px)",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",height:52}}>
+        <button onClick={()=>setPantalla("landing")} style={{background:"none",border:"none",color:"#64748b",fontSize:13,fontWeight:600,cursor:"pointer",padding:0}}>← Volver</button>
+        <button onClick={entrarGratis} style={{background:"linear-gradient(135deg,#3b82f6,#6366f1)",border:"none",color:"#fff",fontSize:12,fontWeight:700,padding:"8px 14px",borderRadius:9,cursor:"pointer"}}>
+          Crear cuenta gratis
+        </button>
+      </div>
+      <div style={{margin:"12px 16px 0",background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#94a3b8",lineHeight:1.5}}>
+        Estás probando Rentiq <b style={{color:"#3b82f6"}}>sin cuenta</b>. Evalúa todos los deptos que quieras — y cuando quieras guardar tus propiedades y ver tu flujo real, crea una cuenta gratis.
+      </div>
+      <EvaluarCompra/>
+    </div>
+  );
   if (pantalla === "auth") return <AuthScreen onLogin={()=>setPantalla("app")} onVolver={()=>setPantalla("landing")}/>;
   if (pantalla === "paywall") {
     if (!usuario) return <AuthScreen onLogin={()=>setPantalla("paywall")} onVolver={()=>setPantalla("landing")}/>;
@@ -2099,7 +2164,8 @@ export default function App() {
         <VistaLista deptos={deptos} filtro={filtro} setFiltro={setFiltro}
           onSelect={d=>{setDeptoSel(d);setVista("detalle");}}
           onNuevo={puedeAgregar()?()=>setVista("nuevo"):irAPaywall}
-          bloqueado={!puedeAgregar()}/>
+          bloqueado={!puedeAgregar()}
+          onDemo={cargarDemo}/>
       )}
       {navTab==="deptos"&&vista==="detalle"&&deptoSel&&(
         <VistaDetalle d={deptoSel} onBack={irALista} onEditar={()=>setVista("editar")} onEliminar={eliminar} acceso={acceso} onPagar={irAPaywall}/>
@@ -2110,14 +2176,14 @@ export default function App() {
       {vista==="editar"&&deptoSel&&(
         <FormularioDepto titulo="Editar propiedad" inicial={deptoSel} onGuardar={guardarEdicion} onCancelar={()=>setVista("detalle")}/>
       )}
-      {navTab==="evaluar"&&acceso&&<EvaluarCompra/>}
+      {navTab==="evaluar"&&<EvaluarCompra/>}
       {navTab==="renta"&&acceso&&<DeclaracionRenta deptos={deptos}/>}
       {navTab==="portafolio"&&<VistaPortafolio deptos={deptos} acceso={acceso} onPagar={irAPaywall}/>}
 
       {vista!=="nuevo"&&vista!=="editar"&&(
         <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:100,background:"rgba(8,15,26,0.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,0.08)",display:"flex"}}>
           {[{k:"deptos",i:"🏠",l:"Deptos"},{k:"evaluar",i:"🎯",l:"Evaluar"},{k:"renta",i:"🧾",l:"Renta"},{k:"portafolio",i:"📊",l:"Portafolio"}].map(t=>{
-            const proLock = (t.k==="evaluar"||t.k==="renta") && !acceso;
+            const proLock = t.k==="renta" && !acceso;
             return (
             <button key={t.k} onClick={()=>{ if(proLock){irAPaywall();return;} setNavTab(t.k);irALista(); }} style={{
               flex:1,background:"none",border:"none",cursor:"pointer",
