@@ -85,48 +85,54 @@ function AuthScreen({ onLogin, onVolver }) {
     setCargando(false);
   };
 
+  const inputStyle = {width:"100%",background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,color:"#0f172a",fontSize:14,padding:"12px 14px",outline:"none",boxSizing:"border-box"};
+
   return (
-    <div style={{minHeight:"100vh",background:"#080f1a",color:"#f1f5f9",fontFamily:"'DM Sans',system-ui,sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{width:"100%",maxWidth:360}}>
-        <button onClick={onVolver} style={{background:"none",border:"none",color:"#3b82f6",fontSize:13,cursor:"pointer",padding:0,marginBottom:24}}>← Volver</button>
-        <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{width:48,height:48,borderRadius:14,background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,margin:"0 auto 16px"}}>🏢</div>
-          <h2 style={{margin:"0 0 8px",fontSize:22,fontWeight:900}}>{modo==="login"?"Bienvenido de vuelta":"Crear cuenta gratis"}</h2>
-          <p style={{margin:0,fontSize:13,color:"#64748b"}}>{modo==="login"?"Ingresa para ver tus propiedades":"Empieza a analizar tu primer depto"}</p>
-        </div>
-        <div style={{marginBottom:16}}>
-          <label style={{fontSize:12,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:5}}>Email</label>
-          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com"
-            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#f1f5f9",fontSize:14,padding:"12px 14px",outline:"none",boxSizing:"border-box"}}/>
-        </div>
-        <div style={{marginBottom:20}}>
-          <label style={{fontSize:12,color:"#94a3b8",fontWeight:600,display:"block",marginBottom:5}}>Contraseña</label>
-          <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Mínimo 6 caracteres"
-            onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
-            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"#f1f5f9",fontSize:14,padding:"12px 14px",outline:"none",boxSizing:"border-box"}}/>
-        </div>
-        {modo==="login"&&(
-          <div style={{textAlign:"right",marginTop:-12,marginBottom:16}}>
-            <span onClick={recuperarPass} style={{fontSize:12,color:"#3b82f6",cursor:"pointer"}}>¿Olvidaste tu contraseña?</span>
+    <div style={{minHeight:"100vh",background:"#f8f9fb",color:"#0f172a",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{width:"100%",maxWidth:400}}>
+        <button onClick={onVolver} style={{background:"none",border:"none",color:"#64748b",fontSize:13,fontWeight:600,cursor:"pointer",padding:0,marginBottom:20}}>← Volver</button>
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:20,padding:"36px 28px",boxShadow:"0 20px 50px -25px rgba(16,24,43,0.15)"}}>
+          <div style={{textAlign:"center",marginBottom:28}}>
+            <div style={{width:48,height:48,borderRadius:13,background:"#10182b",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",color:"#c9962f"}}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+            </div>
+            <div style={{fontSize:17,fontWeight:800,marginBottom:10}}>Rent<span style={{color:"#c9962f"}}>iq</span></div>
+            <h2 style={{margin:"0 0 6px",fontSize:22,fontWeight:900,letterSpacing:-0.4}}>{modo==="login"?"Bienvenido de vuelta":"Crear cuenta gratis"}</h2>
+            <p style={{margin:0,fontSize:13,color:"#64748b"}}>{modo==="login"?"Ingresa para ver tus propiedades":"Empieza a analizar tu primer depto"}</p>
           </div>
-        )}
-        {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#ef4444",marginBottom:16}}>{error}</div>}
-        {info&&<div style={{background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#22c55e",marginBottom:16}}>{info}</div>}
-        <button onClick={handleSubmit} disabled={cargando} style={{
-          width:"100%",background:"linear-gradient(135deg,#3b82f6,#6366f1)",
-          border:"none",color:"#fff",fontSize:15,fontWeight:800,
-          padding:"14px",borderRadius:12,cursor:cargando?"not-allowed":"pointer",
-          opacity:cargando?0.7:1,marginBottom:16,
-        }}>
-          {cargando?"Cargando...":(modo==="login"?"Ingresar":"Crear cuenta")}
-        </button>
-        <div style={{textAlign:"center",fontSize:13,color:"#475569"}}>
-          {modo==="login"?"¿No tienes cuenta?":"¿Ya tienes cuenta?"}{" "}
-          <span onClick={()=>{setModo(modo==="login"?"registro":"login");setError("");setInfo("");}}
-            style={{color:"#3b82f6",cursor:"pointer",fontWeight:700}}>
-            {modo==="login"?"Regístrate gratis":"Inicia sesión"}
-          </span>
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:12.5,color:"#334155",fontWeight:700,display:"block",marginBottom:6}}>Email</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" style={inputStyle}/>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{fontSize:12.5,color:"#334155",fontWeight:700,display:"block",marginBottom:6}}>Contraseña</label>
+            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Mínimo 6 caracteres"
+              onKeyDown={e=>e.key==="Enter"&&handleSubmit()} style={inputStyle}/>
+          </div>
+          {modo==="login"&&(
+            <div style={{textAlign:"right",marginTop:-12,marginBottom:16}}>
+              <span onClick={recuperarPass} style={{fontSize:12,color:"#0284c7",fontWeight:600,cursor:"pointer"}}>¿Olvidaste tu contraseña?</span>
+            </div>
+          )}
+          {error&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:9,padding:"10px 14px",fontSize:12.5,color:"#b91c1c",marginBottom:16}}>{error}</div>}
+          {info&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:9,padding:"10px 14px",fontSize:12.5,color:"#15803d",marginBottom:16}}>{info}</div>}
+          <button onClick={handleSubmit} disabled={cargando} style={{
+            width:"100%",background:"#10182b",
+            border:"none",color:"#fff",fontSize:15,fontWeight:700,
+            padding:"14px",borderRadius:11,cursor:cargando?"not-allowed":"pointer",
+            opacity:cargando?0.7:1,marginBottom:18,
+          }}>
+            {cargando?"Cargando...":(modo==="login"?"Ingresar":"Crear cuenta")}
+          </button>
+          <div style={{textAlign:"center",fontSize:13,color:"#64748b"}}>
+            {modo==="login"?"¿No tienes cuenta?":"¿Ya tienes cuenta?"}{" "}
+            <span onClick={()=>{setModo(modo==="login"?"registro":"login");setError("");setInfo("");}}
+              style={{color:"#c9962f",cursor:"pointer",fontWeight:700}}>
+              {modo==="login"?"Regístrate gratis":"Inicia sesión"}
+            </span>
+          </div>
         </div>
+        <div style={{textAlign:"center",fontSize:12,color:"#94a3b8",marginTop:18}}>Sin tarjeta. Cancela cuando quieras.</div>
       </div>
     </div>
   );
@@ -833,7 +839,60 @@ function EscenariosTab({d,c}){
 }
 
 // ─── VISTA PORTAFOLIO ─────────────────────────────────────────────────────────
-function VistaPortafolio({ deptos }) {
+// Tarjeta "Recomendación con IA" del portafolio. El análisis lo genera la
+// Cloud Function analisisIA (solo Pro; cacheado 1 h en el servidor).
+function AnalisisIA({ acceso, onPagar }) {
+  const [analisis, setAnalisis] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
+
+  const generar = async () => {
+    if (cargando) return;
+    setError(""); setCargando(true);
+    try {
+      const { data } = await httpsCallable(functions, "analisisIA")({});
+      setAnalisis(data.analisis);
+    } catch (e) {
+      if (e.code === "functions/failed-precondition") setError("Agrega al menos una propiedad para generar el análisis.");
+      else if (e.code === "functions/permission-denied") setError("El análisis con IA es parte de Rentiq Pro.");
+      else setError("No se pudo generar el análisis. Intenta de nuevo en unos minutos.");
+    }
+    setCargando(false);
+  };
+
+  return (
+    <div style={{background:"linear-gradient(135deg,rgba(139,92,246,0.10),rgba(59,130,246,0.10))",border:"1px solid rgba(139,92,246,0.35)",borderRadius:12,padding:"14px 16px",marginTop:6}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:analisis||error?10:4}}>
+        <div>
+          <div style={{fontSize:13,fontWeight:800,color:"#f1f5f9"}}>✨ Recomendación con IA</div>
+          <div style={{fontSize:11,color:"#64748b",marginTop:1}}>Análisis de gestión e inversión de tu portafolio</div>
+        </div>
+        {acceso ? (
+          <button onClick={generar} disabled={cargando} style={{background:"rgba(139,92,246,0.25)",border:"1px solid rgba(139,92,246,0.5)",color:"#c4b5fd",fontSize:12,fontWeight:700,padding:"9px 14px",borderRadius:9,cursor:cargando?"wait":"pointer",opacity:cargando?0.7:1,flexShrink:0}}>
+            {cargando?"Analizando…":analisis?"Actualizar":"Generar"}
+          </button>
+        ) : (
+          <button onClick={onPagar} style={{background:"rgba(139,92,246,0.25)",border:"1px solid rgba(139,92,246,0.5)",color:"#c4b5fd",fontSize:12,fontWeight:700,padding:"9px 14px",borderRadius:9,cursor:"pointer",flexShrink:0}}>
+            🔒 Pro
+          </button>
+        )}
+      </div>
+      {cargando&&(
+        <div style={{fontSize:12,color:"#64748b",display:"flex",alignItems:"center",gap:8}}>
+          <span style={{width:13,height:13,border:"2px solid rgba(139,92,246,0.3)",borderTopColor:"#8b5cf6",borderRadius:"50%",display:"inline-block",animation:"spin 0.8s linear infinite"}}/>
+          Claude está revisando tus propiedades. Esto puede tardar hasta un minuto.
+          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        </div>
+      )}
+      {error&&<div style={{fontSize:12,color:"#ef4444"}}>{error}</div>}
+      {analisis&&!cargando&&(
+        <div style={{fontSize:12.5,color:"#cbd5e1",lineHeight:1.65,whiteSpace:"pre-wrap"}}>{analisis}</div>
+      )}
+    </div>
+  );
+}
+
+function VistaPortafolio({ deptos, acceso, onPagar }) {
   const all = deptos.map(calc);
   if (all.length === 0) return (
     <div style={{padding:"60px 24px",textAlign:"center",color:"#475569"}}>
@@ -876,6 +935,7 @@ function VistaPortafolio({ deptos }) {
           <Chip text={d.rec} color={d.recC}/>
         </div>
       ))}
+      <AnalisisIA acceso={acceso} onPagar={onPagar}/>
     </div>
   );
 }
@@ -2052,7 +2112,7 @@ export default function App() {
       )}
       {navTab==="evaluar"&&acceso&&<EvaluarCompra/>}
       {navTab==="renta"&&acceso&&<DeclaracionRenta deptos={deptos}/>}
-      {navTab==="portafolio"&&<VistaPortafolio deptos={deptos}/>}
+      {navTab==="portafolio"&&<VistaPortafolio deptos={deptos} acceso={acceso} onPagar={irAPaywall}/>}
 
       {vista!=="nuevo"&&vista!=="editar"&&(
         <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:100,background:"rgba(8,15,26,0.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,0.08)",display:"flex"}}>
