@@ -1858,10 +1858,12 @@ function Landing({ onEntrar, onPagar, onEvaluar }) {
             <div style={{width:26,height:26,borderRadius:7,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#10182b"}}><IconHome size={14}/></div>
             <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Rent<span style={{color:"#c9962f"}}>iq</span></span>
           </div>
-          <div style={{display:"flex",gap:24,fontSize:13,color:"#94a3b8"}}>
+          <div style={{display:"flex",gap:24,fontSize:13,color:"#94a3b8",flexWrap:"wrap",justifyContent:"center"}}>
             <a href="#modulos" style={{color:"inherit",textDecoration:"none"}}>Módulos</a>
             <a href="#planes" style={{color:"inherit",textDecoration:"none"}}>Planes</a>
             <a href="#preguntas" style={{color:"inherit",textDecoration:"none"}}>Preguntas</a>
+            <a href="/terminos.html" style={{color:"inherit",textDecoration:"none"}}>Términos</a>
+            <a href="/privacidad.html" style={{color:"inherit",textDecoration:"none"}}>Privacidad</a>
           </div>
           <a href="mailto:rentiq.app.chile@gmail.com" style={{fontSize:13,color:"#c9962f",textDecoration:"none"}}>rentiq.app.chile@gmail.com</a>
           <div style={{fontSize:12,color:"#64748b"}}>Hecho en Chile · © {new Date().getFullYear()} Rentiq</div>
